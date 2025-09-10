@@ -3301,11 +3301,11 @@
         }
     },
     {
-        "id": 18,
+        "id": 86,
         "request": {
             "method": "GET",
             "baseURL": "https://{TARGET}",
-            "path": ["/", "/admin/", "/nonexistent-path/"],
+            "path": ["/", "/nonexistent-path-oajfjioaoisjdf/"],
             "body": null
         },
         "response": {
