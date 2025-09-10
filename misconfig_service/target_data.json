@@ -1,0 +1,73 @@
+
+{
+  "subdomains": {},
+  "dns_records": {
+    "A": [
+      "192.248.8.68"
+    ],
+    "AAAA": [
+      "2401:dd00:10:1::68"
+    ]
+  },
+  "services": {
+    "open_ports": {
+      "22": {
+        "service": "SSH",
+        "banner": "SSH-2.0-OpenSSH_8.7"
+      },
+      "80": {
+        "service": "HTTP",
+        "banner": "No banner"
+      },
+      "443": {
+        "service": "HTTPS",
+        "banner": "No banner"
+      }
+    }
+  },
+  "web_technologies": {
+    "http://online.uom.lk": {
+      "server": "Apache/2.4.62 (Rocky Linux) OpenSSL/3.2.2",
+      "x_powered_by": "PHP/8.3.21",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8"
+    },
+    "https://online.uom.lk": {
+      "server": "Apache/2.4.62 (Rocky Linux) OpenSSL/3.2.2",
+      "x_powered_by": "PHP/8.3.21",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8"
+    }
+  },
+  "directories": [
+    {
+      "url": "http://online.uom.lk/admin",
+      "status": 200,
+      "size": 21383
+    },
+    {
+      "url": "http://online.uom.lk/login",
+      "status": 200,
+      "size": 21383
+    },
+    {
+      "url": "https://online.uom.lk/admin",
+      "status": 200,
+      "size": 21383
+    },
+    {
+      "url": "https://online.uom.lk/login",
+      "status": 200,
+      "size": 21383
+    }
+  ],
+  "api_endpoints": [
+    {
+      "url": "http://localhost:3000",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "source": "content_analysis"
+    }
+  ],
+  "cloud_services": {}
+}
