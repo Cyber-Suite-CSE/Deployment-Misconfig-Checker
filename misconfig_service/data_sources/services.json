@@ -664,17 +664,13 @@
         "request": {
             "method": "GET",
             "baseURL": "https://{TARGET}",
-            "path": ["/", "/nonexistent-path-oajfjioaoisjdf/"],
+            "path": ["/nonexistent-path-oajfjioaoisjdf/"],
             "body": null
         },
         "response": {
             "statusCode": 200,
             "detectionFingerprints": [
-                "Django",
-                "Debug",
-                "Traceback",
-                "Exception Type:",
-                "Request Method:"
+                "Django"
             ],
             "fingerprints": [
                 "Django Debug Page",
