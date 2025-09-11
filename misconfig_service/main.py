@@ -8,7 +8,7 @@ import time
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-SERVICES_JSON_PATH = "data_sources/updated_services.json"
+SERVICES_JSON_PATH = "data_sources/services.json"
 
 def load_services(path: str) -> List[Dict[str, Any]]:
     """Load services configuration from JSON file"""
@@ -120,7 +120,6 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
     content = response_data.get("content", "")
     headers = response_data.get("headers", {})
     
-    # Create separate search texts for better debugging
     content_text = content
     headers_text = " ".join([f"{k}: {v}" for k, v in headers.items()])
     combined_text = content_text + " " + headers_text
@@ -140,7 +139,6 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
         service_name = service.get("metadata", {}).get("serviceName", "Unknown")
         print(f"DEBUG: Checking service '{service_name}' with {len(all_fingerprints)} fingerprints and {len(exclusion_patterns)} exclusion patterns")
         
-        # First check if any exclusion patterns match
         excluded = False
         for exclusion in exclusion_patterns:
             if exclusion and exclusion in combined_text:
@@ -149,11 +147,10 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
                 break
         
         if excluded:
-            continue  # Skip this service entirely if exclusion pattern matches
+            continue
         
         for fp in all_fingerprints:
             if fp:
-                # Check where the fingerprint was found
                 found_in_content = fp in content_text
                 found_in_headers = fp in headers_text
                 found_in_combined = fp in combined_text

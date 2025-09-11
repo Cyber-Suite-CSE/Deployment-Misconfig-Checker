@@ -3299,46 +3299,5 @@
                 "https://docs.newrelic.com/docs/security/"
             ]
         }
-    },
-    {
-        "id": 86,
-        "request": {
-            "method": "GET",
-            "baseURL": "https://{TARGET}",
-            "path": ["/", "/nonexistent-path-oajfjioaoisjdf/"],
-            "body": null
-        },
-        "response": {
-            "statusCode": 200,
-            "detectionFingerprints": [
-                "Django",
-                "Debug",
-                "Traceback",
-                "Exception Type:",
-                "Request Method:"
-            ],
-            "fingerprints": [
-                "Django Debug Page",
-                "Traceback"
-            ],
-            "exclusionPatterns": [
-                "404 Not Found",
-                "403 Forbidden"
-            ]
-        },
-        "metadata": {
-            "service": "django",
-            "serviceName": "Python Django Debug Mode Enabled",
-            "description": "A Django application running in debug mode exposes detailed error pages and stack traces, potentially revealing sensitive information about the server, database, and code structure.",
-            "reproductionSteps": [
-                "Visit the target Django application URL",
-                "Trigger an error by accessing invalid URLs or providing unexpected input",
-                "Check if a detailed Django debug page with stack trace is returned"
-            ],
-            "references": [
-                "https://docs.djangoproject.com/en/stable/ref/settings/#debug",
-                "https://docs.djangoproject.com/en/stable/topics/security/#debug-mode"
-            ]
-        }
     }
 ]
