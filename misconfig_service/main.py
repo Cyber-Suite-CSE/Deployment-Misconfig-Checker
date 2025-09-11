@@ -5,7 +5,6 @@ from typing import List, Dict, Any, Set
 from urllib.parse import urlparse
 import time
 
-# Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SERVICES_JSON_PATH = "data_sources/services.json"
@@ -17,7 +16,6 @@ def load_services(path: str) -> List[Dict[str, Any]]:
         services = json.load(f)
     print(f"DEBUG: Successfully loaded {len(services)} services")
     
-    # Show summary of what we're checking for
     total_fingerprints = 0
     total_detection_fingerprints = 0
     total_exclusions = 0
@@ -202,8 +200,6 @@ def scan_target(services: List[Dict[str, Any]], target_data: Dict[str, Any]) -> 
         else:
             print(f"DEBUG: Request failed for {url} - Error: {response_data['error']}")
         
-        # Small delay to be respectful
-        print(f"DEBUG: Waiting 0.5 seconds before next request...")
         time.sleep(0.5)
     
     print(f"\nDEBUG: === SCAN COMPLETE ===")
@@ -214,27 +210,22 @@ def main():
     """Main function"""
     print("DEBUG: Starting fingerprint scanner...")
     try:
-        # Load services configuration
         print("DEBUG: Step 1 - Loading services configuration...")
         services = load_services(SERVICES_JSON_PATH)
         print(f"DEBUG: Loaded {len(services)} service fingerprints")
         
-        # Get target data file path
         print("DEBUG: Step 2 - Getting target data file...")
         target_file = input("Enter path to target data JSON file: ").strip()
         if not target_file:
             print("DEBUG: No file provided. Exiting.")
             return
         
-        # Load target data
         print("DEBUG: Step 3 - Loading target data...")
         target_data = load_target_data(target_file)
         
-        # Scan target
         print("DEBUG: Step 4 - Starting target scan...")
         matches = scan_target(services, target_data)
         
-        # Display results
         print("DEBUG: Step 5 - Displaying results...")
         if matches:
             print(f"\nDEBUG: === FINGERPRINT SCAN RESULTS ===")
@@ -247,7 +238,6 @@ def main():
                 print(f"Fingerprint: {match['fingerprint']}")
                 print(f"Description: {match['description']}")
                 
-                # Show where the fingerprint was found
                 locations = []
                 if match.get('found_in_content'):
                     locations.append("Response Content")
