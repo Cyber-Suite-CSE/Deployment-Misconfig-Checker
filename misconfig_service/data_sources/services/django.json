@@ -79,8 +79,7 @@
             "detectionFingerprints": [],
             "fingerprints": [
                 "SECRET_KEY =",
-                "DATABASES =",
-                "DEBUG = True"
+                "DATABASES ="
             ]
         },
         "metadata": {

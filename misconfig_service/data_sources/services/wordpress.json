@@ -212,5 +212,49 @@
                 "https://wordpress.org/support/article/hardening-wordpress/"
             ]
         }
+    },
+    {
+        "id": 308,
+        "request": {
+            "method": "POST",
+            "baseURL": "https://{TARGET}",
+            "path": ["/xmlrpc.php"],
+            "headers": [
+                {
+                    "Content-Type": "application/xml"
+                }
+            ],
+            "body": "<?xml version=\"1.0\" encoding=\"utf-8\"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>"
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [
+                "methodResponse",
+                "methodName"
+            ],
+            "fingerprints": [
+                "methodResponse",
+                "wp.getUsersBlogs",
+                "wp.getCategories"
+            ],
+            "exclusionPatterns": [
+                "403 Forbidden",
+                "404 Not Found"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress XML-RPC Enabled",
+            "description": "WordPress XML-RPC interface can be abused for brute force attacks, DDoS amplification, and unauthorized content manipulation if not properly secured or disabled.",
+            "reproductionSteps": [
+                "POST to /xmlrpc.php with system.listMethods",
+                "Check for successful response with available methods",
+                "Test for username enumeration and brute force capabilities"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/xml-rpc-support/",
+                "https://www.wordfence.com/blog/2019/05/wordpress-xml-rpc-abused-in-brute-force-attacks/"
+            ]
+        }
     }
 ]

@@ -11,7 +11,6 @@ load_dotenv()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-SERVICES_JSON_PATH = "data_sources/services.json"
 SERVICES_DIR = "data_sources/services/"
 
 def load_services_from_directory(services_dir: str) -> List[Dict[str, Any]]:
@@ -57,37 +56,9 @@ def load_services_from_directory(services_dir: str) -> List[Dict[str, Any]]:
     
     return all_services
 
-def load_services(path: str = None, use_directory: bool = False) -> List[Dict[str, Any]]:
-    """Load services configuration from JSON file or directory"""
-    if use_directory:
-        return load_services_from_directory(SERVICES_DIR)
-    
-    if path is None:
-        path = SERVICES_JSON_PATH
-        
-    print(f"DEBUG: Loading services from {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        services = json.load(f)
-    print(f"DEBUG: Successfully loaded {len(services)} services")
-    
-    total_fingerprints = 0
-    total_detection_fingerprints = 0
-    total_exclusions = 0
-    
-    for service in services:
-        fps = service.get("response", {}).get("fingerprints", [])
-        det_fps = service.get("response", {}).get("detectionFingerprints", [])
-        excl = service.get("response", {}).get("exclusionPatterns", [])
-        
-        total_fingerprints += len(fps)
-        total_detection_fingerprints += len(det_fps)
-        total_exclusions += len(excl)
-    
-    print(f"DEBUG: Total fingerprints: {total_fingerprints}")
-    print(f"DEBUG: Total detectionFingerprints: {total_detection_fingerprints}")
-    print(f"DEBUG: Total exclusionPatterns: {total_exclusions}")
-    
-    return services
+def load_services(use_directory: bool = True) -> List[Dict[str, Any]]:
+    """Load services configuration from modular service files"""
+    return load_services_from_directory(SERVICES_DIR)
 
 def load_target_data(path: str) -> Dict[str, Any]:
     """Load target data from JSON file"""
@@ -142,7 +113,6 @@ def make_request(url: str, method: str = "GET", custom_headers: List[Dict[str, s
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        
         # Add custom headers from service definition
         if custom_headers:
             for header_dict in custom_headers:
@@ -231,6 +201,11 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
         if excluded:
             continue
         
+        # Check all fingerprints for this service and collect matches
+        matched_fingerprints = []
+        found_in_content_any = False
+        found_in_headers_any = False
+        
         for fp in all_fingerprints:
             if fp:
                 found_in_content = fp in content_text
@@ -238,6 +213,12 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
                 found_in_combined = fp in combined_text
                 
                 if found_in_combined:
+                    matched_fingerprints.append(fp)
+                    if found_in_content:
+                        found_in_content_any = True
+                    if found_in_headers:
+                        found_in_headers_any = True
+                    
                     location = []
                     if found_in_content:
                         location.append("content")
@@ -246,19 +227,22 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
                     
                     location_str = " and ".join(location) if location else "combined text"
                     print(f"DEBUG: MATCH FOUND! Service: {service_name}, Fingerprint: '{fp}' (found in: {location_str})")
-                    
-                    matches.append({
-                        "url": response_data["url"],
-                        "service": service_name,
-                        "service_id": service.get("id", "Unknown"),
-                        "fingerprint": fp,
-                        "description": service.get("metadata", {}).get("description", ""),
-                        "references": service.get("metadata", {}).get("references", []),
-                        "found_in_content": found_in_content,
-                        "found_in_headers": found_in_headers
-                    })
                 else:
                     print(f"DEBUG: No match for fingerprint '{fp}' in service '{service_name}'")
+        
+        # If any fingerprints matched, create a single match entry for this service
+        if matched_fingerprints:
+            matches.append({
+                "url": response_data["url"],
+                "service": service_name,
+                "service_id": service.get("id", "Unknown"),
+                "fingerprints": matched_fingerprints,  # List of all matched fingerprints
+                "fingerprint": matched_fingerprints[0],  # Keep first one for backward compatibility
+                "description": service.get("metadata", {}).get("description", ""),
+                "references": service.get("metadata", {}).get("references", []),
+                "found_in_content": found_in_content_any,
+                "found_in_headers": found_in_headers_any
+            })
     
     print(f"DEBUG: Found {len(matches)} fingerprint matches for this response")
     return matches
@@ -372,12 +356,26 @@ def scan_target(services: List[Dict[str, Any]], target_data: Dict[str, Any]) -> 
     
     requests_to_make = generate_service_requests(services, target_domains)
     
+    # Track detected misconfigurations per domain to avoid duplicate testing
+    detected_misconfigs = {}  # {domain: {service_name: True}}
+    
     print(f"DEBUG: Starting scan with {len(requests_to_make)} requests...")
     
     for i, request_info in enumerate(requests_to_make, 1):
+        target_domain = request_info["target_domain"]
+        service_name = request_info["service_name"]
+        
+        # Check if this misconfiguration has already been detected for this domain
+        if target_domain in detected_misconfigs and service_name in detected_misconfigs[target_domain]:
+            print(f"\nDEBUG: === Skipping Request {i}/{len(requests_to_make)} ===")
+            print(f"DEBUG: {request_info['method']} {request_info['url']}")
+            print(f"DEBUG: Service: {service_name}")
+            print(f"DEBUG: SKIPPED - This misconfiguration already detected for domain: {target_domain}")
+            continue
+        
         print(f"\nDEBUG: === Making Request {i}/{len(requests_to_make)} ===")
         print(f"DEBUG: {request_info['method']} {request_info['url']}")
-        print(f"DEBUG: Service: {request_info['service_name']}")
+        print(f"DEBUG: Service: {service_name}")
         
         response_data = make_request(
             url=request_info["url"],
@@ -391,6 +389,14 @@ def scan_target(services: List[Dict[str, Any]], target_data: Dict[str, Any]) -> 
             # Check if this specific service matches
             service_matches = check_fingerprints_in_response([request_info["service"]], response_data)
             if service_matches:
+                # Mark this misconfiguration as detected for this domain
+                if target_domain not in detected_misconfigs:
+                    detected_misconfigs[target_domain] = {}
+                detected_misconfigs[target_domain][service_name] = True
+                
+                print(f"DEBUG: MISCONFIGURATION DETECTED! Marking '{service_name}' as detected for domain '{target_domain}'")
+                print(f"DEBUG: Future requests for this misconfiguration on this domain will be skipped")
+                
                 # Add additional context to matches
                 for match in service_matches:
                     match["target_domain"] = request_info["target_domain"]
@@ -410,18 +416,8 @@ def main():
     """Main function"""
     print("DEBUG: Starting fingerprint scanner...")
     try:
-        print("DEBUG: Step 1 - Choose services configuration source...")
-        print("1. Use single services.json file (legacy)")
-        print("2. Use modular service files (recommended)")
-        choice = input("Choose option (1 or 2): ").strip()
-        
-        if choice == "2":
-            print("DEBUG: Loading services from modular files...")
-            services = load_services(use_directory=True)
-        else:
-            print("DEBUG: Loading services from single file...")
-            services = load_services(SERVICES_JSON_PATH)
-        
+        print("DEBUG: Step 1 - Loading services configuration...")
+        services = load_services(use_directory=True)
         print(f"DEBUG: Loaded {len(services)} service fingerprints")
         
         print("DEBUG: Step 2 - Getting target data file...")
@@ -447,7 +443,14 @@ def main():
                 print(f"Method: {match.get('method', 'GET')}")
                 print(f"Target Domain: {match.get('target_domain', 'N/A')}")
                 print(f"Service: {match['service']} (ID: {match['service_id']})")
-                print(f"Fingerprint: {match['fingerprint']}")
+                
+                # Show all matched fingerprints
+                fingerprints = match.get('fingerprints', [match.get('fingerprint')])
+                if len(fingerprints) == 1:
+                    print(f"Fingerprint: {fingerprints[0]}")
+                else:
+                    print(f"Fingerprints: {', '.join(fingerprints)}")
+                
                 print(f"Description: {match['description']}")
                 
                 locations = []
