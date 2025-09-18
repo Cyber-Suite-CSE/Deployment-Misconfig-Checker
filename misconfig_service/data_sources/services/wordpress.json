@@ -1,0 +1,216 @@
+[
+    {
+        "id": 301,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/wp-config.php"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "DB_NAME",
+                "DB_USER", 
+                "DB_PASSWORD",
+                "AUTH_KEY"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress Configuration File Exposed",
+            "description": "WordPress wp-config.php file is publicly accessible, exposing database credentials and authentication keys.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if wp-config.php content is displayed"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/editing-wp-config-php/",
+                "https://owasp.org/www-project-top-ten/2017/A6_2017-Security_Misconfiguration"
+            ]
+        }
+    },
+    {
+        "id": 302,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/wp-admin/install.php"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "WordPress Installation",
+                "Welcome to WordPress"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress Installation Page Accessible",
+            "description": "WordPress installation page is still accessible, indicating incomplete setup or reinstallation possibility.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if WordPress installation page loads"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/how-to-install-wordpress/",
+                "https://codex.wordpress.org/Installing_WordPress"
+            ]
+        }
+    },
+    {
+        "id": 303,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/wp-content/debug.log"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "[error]",
+                "PHP Fatal error",
+                "WordPress database error"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress Debug Log Exposed",
+            "description": "WordPress debug log is publicly accessible, potentially exposing sensitive error information and system paths.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if debug log content is displayed"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/debugging-in-wordpress/",
+                "https://codex.wordpress.org/WP_DEBUG"
+            ]
+        }
+    },
+    {
+        "id": 304,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/wp-content/uploads/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Index of /wp-content/uploads/",
+                "Parent Directory"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress Uploads Directory Browsable",
+            "description": "WordPress uploads directory allows directory browsing, potentially exposing uploaded media files.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if directory listing is shown"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/hardening-wordpress/",
+                "https://codex.wordpress.org/Changing_File_Permissions"
+            ]
+        }
+    },
+    {
+        "id": 305,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/readme.html"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "WordPress",
+                "Welcome to WordPress"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress Readme File Exposed",
+            "description": "WordPress readme.html file is accessible, potentially revealing WordPress version information.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if readme.html content is displayed"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/hardening-wordpress/",
+                "https://codex.wordpress.org/Updating_WordPress"
+            ]
+        }
+    },
+    {
+        "id": 306,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/wp-json/wp/v2/users"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": ["application/json"],
+            "fingerprints": [
+                "\"slug\":",
+                "\"name\":",
+                "\"id\":"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress REST API User Enumeration",
+            "description": "WordPress REST API exposes user information without authentication, allowing user enumeration.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if user data is returned in JSON format"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/wordpress-rest-api/",
+                "https://developer.wordpress.org/rest-api/reference/users/"
+            ]
+        }
+    },
+    {
+        "id": 307,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/wp-admin/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": ["wp-admin"],
+            "fingerprints": [
+                "<title>Log In",
+                "WordPress"
+            ]
+        },
+        "metadata": {
+            "service": "wordpress",
+            "serviceName": "WordPress Admin Panel Accessible",
+            "description": "WordPress admin login panel is publicly accessible without rate limiting or protection.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if WordPress login page loads"
+            ],
+            "references": [
+                "https://wordpress.org/support/article/brute-force-attacks/",
+                "https://wordpress.org/support/article/hardening-wordpress/"
+            ]
+        }
+    }
+]

@@ -1,0 +1,160 @@
+[
+    {
+        "id": 18,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/nonexistent-path-oajfjioaoisjdf/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [
+                "Django"
+            ],
+            "fingerprints": [
+                "Django Debug Page",
+                "Traceback"
+            ],
+            "exclusionPatterns": [
+                "404 Not Found",
+                "403 Forbidden"
+            ]
+        },
+        "metadata": {
+            "service": "django",
+            "serviceName": "Python Django Debug Mode Enabled",
+            "description": "A Django application running in debug mode exposes detailed error pages and stack traces, potentially revealing sensitive information about the server, database, and code structure.",
+            "reproductionSteps": [
+                "Visit the target Django application URL",
+                "Trigger an error by accessing invalid URLs or providing unexpected input",
+                "Check if a detailed Django debug page with stack trace is returned"
+            ],
+            "references": [
+                "https://docs.djangoproject.com/en/stable/ref/settings/#debug",
+                "https://docs.djangoproject.com/en/stable/topics/security/#debug-mode"
+            ]
+        }
+    },
+    {
+        "id": 201,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/admin/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": ["csrfmiddlewaretoken"],
+            "fingerprints": [
+                "<title>Django administration</title>",
+                "Django Administration"
+            ]
+        },
+        "metadata": {
+            "service": "django",
+            "serviceName": "Django Admin Panel Accessible",
+            "description": "Django admin panel is accessible without proper access controls.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if Django admin login page is accessible"
+            ],
+            "references": [
+                "https://docs.djangoproject.com/en/stable/ref/contrib/admin/#admin-site",
+                "https://docs.djangoproject.com/en/stable/topics/security/#user-uploaded-content"
+            ]
+        }
+    },
+    {
+        "id": 202,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/settings.py"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "SECRET_KEY =",
+                "DATABASES =",
+                "DEBUG = True"
+            ]
+        },
+        "metadata": {
+            "service": "django",
+            "serviceName": "Django Settings File Exposed",
+            "description": "Django settings.py file is publicly accessible, exposing sensitive configuration including secret keys and database settings.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if settings.py content is displayed"
+            ],
+            "references": [
+                "https://docs.djangoproject.com/en/stable/topics/settings/",
+                "https://docs.djangoproject.com/en/stable/ref/settings/#secret-key"
+            ]
+        }
+    },
+    {
+        "id": 203,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/media/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Index of /media/",
+                "Parent Directory"
+            ]
+        },
+        "metadata": {
+            "service": "django",
+            "serviceName": "Django Media Directory Browsable",
+            "description": "Django media directory allows directory browsing, potentially exposing uploaded files.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if directory listing is shown"
+            ],
+            "references": [
+                "https://docs.djangoproject.com/en/stable/howto/static-files/",
+                "https://docs.djangoproject.com/en/stable/topics/security/#user-uploaded-content"
+            ]
+        }
+    },
+    {
+        "id": 204,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/static/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Index of /static/",
+                "Parent Directory"
+            ]
+        },
+        "metadata": {
+            "service": "django",
+            "serviceName": "Django Static Directory Browsable", 
+            "description": "Django static directory allows directory browsing, potentially exposing static files and assets.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if directory listing is shown"
+            ],
+            "references": [
+                "https://docs.djangoproject.com/en/stable/howto/static-files/",
+                "https://docs.djangoproject.com/en/stable/ref/settings/#static-url"
+            ]
+        }
+    }
+]

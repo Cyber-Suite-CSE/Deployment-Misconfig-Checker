@@ -1,0 +1,217 @@
+[
+    {
+        "id": 401,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/server-status"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Apache Server Status",
+                "Server Version:",
+                "Current Time:"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache Server Status Page Exposed",
+            "description": "Apache server-status page is publicly accessible, exposing server information and statistics.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if Apache server status page loads"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/mod/mod_status.html",
+                "https://owasp.org/www-project-top-ten/2017/A6_2017-Security_Misconfiguration"
+            ]
+        }
+    },
+    {
+        "id": 402,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/server-info"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Apache Server Information",
+                "Module Name",
+                "Server Settings"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache Server Info Page Exposed",
+            "description": "Apache server-info page is publicly accessible, exposing detailed server configuration and loaded modules.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if Apache server info page loads"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/mod/mod_info.html",
+                "https://httpd.apache.org/docs/current/misc/security_tips.html"
+            ]
+        }
+    },
+    {
+        "id": 403,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Index of /",
+                "Parent Directory",
+                "<title>Index of /"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache Directory Listing Enabled",
+            "description": "Apache directory listing is enabled, allowing browsing of server directories and files.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if directory listing is shown"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/mod/mod_autoindex.html",
+                "https://httpd.apache.org/docs/current/misc/security_tips.html#serverroot"
+            ]
+        }
+    },
+    {
+        "id": 404,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/.htaccess"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "RewriteEngine",
+                "RewriteRule",
+                "AuthUserFile"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache .htaccess File Exposed",
+            "description": "Apache .htaccess file is publicly accessible, potentially exposing rewrite rules and configuration directives.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if .htaccess content is displayed"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/howto/htaccess.html",
+                "https://httpd.apache.org/docs/current/misc/security_tips.html"
+            ]
+        }
+    },
+    {
+        "id": 405,
+        "request": {
+            "method": "OPTIONS",
+            "baseURL": "https://{TARGET}",
+            "path": ["/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": ["Allow:"],
+            "fingerprints": [
+                "TRACE",
+                "OPTIONS",
+                "Allow:"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache HTTP TRACE Method Enabled",
+            "description": "Apache server allows HTTP TRACE method, which can be used in cross-site tracing (XST) attacks.",
+            "reproductionSteps": [
+                "Send OPTIONS request to the URL",
+                "Check if TRACE method is listed in Allow header"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/mod/core.html#traceenable",
+                "https://owasp.org/www-community/attacks/Cross_Site_Tracing"
+            ]
+        }
+    },
+    {
+        "id": 406,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/cgi-bin/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Index of /cgi-bin/",
+                "Parent Directory"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache CGI-BIN Directory Browsable",
+            "description": "Apache cgi-bin directory allows directory browsing, potentially exposing CGI scripts.",
+            "reproductionSteps": [
+                "Visit the URL",
+                "Check if cgi-bin directory listing is shown"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/howto/cgi.html",
+                "https://httpd.apache.org/docs/current/misc/security_tips.html#cgi"
+            ]
+        }
+    },
+    {
+        "id": 407,
+        "request": {
+            "method": "GET",
+            "baseURL": "https://{TARGET}",
+            "path": ["/icons/"],
+            "body": null
+        },
+        "response": {
+            "statusCode": 200,
+            "detectionFingerprints": [],
+            "fingerprints": [
+                "Index of /icons/",
+                "Parent Directory"
+            ]
+        },
+        "metadata": {
+            "service": "apache",
+            "serviceName": "Apache Icons Directory Browsable",
+            "description": "Apache icons directory allows directory browsing, potentially revealing server file structure.",
+            "reproductionSteps": [
+                "Visit the URL", 
+                "Check if icons directory listing is shown"
+            ],
+            "references": [
+                "https://httpd.apache.org/docs/current/mod/mod_autoindex.html",
+                "https://httpd.apache.org/docs/current/misc/security_tips.html"
+            ]
+        }
+    }
+]

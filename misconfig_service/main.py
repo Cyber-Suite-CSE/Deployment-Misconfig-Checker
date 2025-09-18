@@ -1,16 +1,70 @@
 import json
+import os
 import requests
 import urllib3
 from typing import List, Dict, Any, Set
 from urllib.parse import urlparse
+from dotenv import load_dotenv
 import time
+
+load_dotenv()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SERVICES_JSON_PATH = "data_sources/services.json"
+SERVICES_DIR = "data_sources/services/"
 
-def load_services(path: str) -> List[Dict[str, Any]]:
-    """Load services configuration from JSON file"""
+def load_services_from_directory(services_dir: str) -> List[Dict[str, Any]]:
+    """Load services configuration from multiple JSON files in a directory"""
+    import os
+    import glob
+    
+    all_services = []
+    json_files = glob.glob(os.path.join(services_dir, "*.json"))
+    
+    print(f"DEBUG: Loading services from directory: {services_dir}")
+    print(f"DEBUG: Found {len(json_files)} JSON files")
+    
+    for json_file in json_files:
+        try:
+            print(f"DEBUG: Loading {json_file}")
+            with open(json_file, "r", encoding="utf-8") as f:
+                services = json.load(f)
+                all_services.extend(services)
+                print(f"DEBUG: Loaded {len(services)} services from {os.path.basename(json_file)}")
+        except Exception as e:
+            print(f"DEBUG: Error loading {json_file}: {e}")
+    
+    print(f"DEBUG: Successfully loaded {len(all_services)} total services")
+    
+    # Calculate statistics
+    total_fingerprints = 0
+    total_detection_fingerprints = 0
+    total_exclusions = 0
+    
+    for service in all_services:
+        fps = service.get("response", {}).get("fingerprints", [])
+        det_fps = service.get("response", {}).get("detectionFingerprints", [])
+        excl = service.get("response", {}).get("exclusionPatterns", [])
+        
+        total_fingerprints += len(fps)
+        total_detection_fingerprints += len(det_fps)
+        total_exclusions += len(excl)
+    
+    print(f"DEBUG: Total fingerprints: {total_fingerprints}")
+    print(f"DEBUG: Total detectionFingerprints: {total_detection_fingerprints}")
+    print(f"DEBUG: Total exclusionPatterns: {total_exclusions}")
+    
+    return all_services
+
+def load_services(path: str = None, use_directory: bool = False) -> List[Dict[str, Any]]:
+    """Load services configuration from JSON file or directory"""
+    if use_directory:
+        return load_services_from_directory(SERVICES_DIR)
+    
+    if path is None:
+        path = SERVICES_JSON_PATH
+        
     print(f"DEBUG: Loading services from {path}")
     with open(path, "r", encoding="utf-8") as f:
         services = json.load(f)
@@ -80,20 +134,49 @@ def extract_urls_from_target(target_data: Dict[str, Any]) -> Set[str]:
     print(f"DEBUG: Total unique URLs extracted: {len(urls)}")
     return urls
 
-def make_request(url: str, timeout: int = 10) -> Dict[str, Any]:
+def make_request(url: str, method: str = "GET", custom_headers: List[Dict[str, str]] = None, body: str = None, timeout: int = 10) -> Dict[str, Any]:
     """Make HTTP request and return response details"""
-    print(f"DEBUG: Making request to {url}")
+    print(f"DEBUG: Making {method} request to {url}")
     try:
+        # Start with default headers
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
-        response = requests.get(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
+        # Add custom headers from service definition
+        if custom_headers:
+            for header_dict in custom_headers:
+                headers.update(header_dict)
+        
+        print(f"DEBUG: Using headers: {headers}")
+        if body:
+            print(f"DEBUG: Using body: {body}")
+        
+        # Make request based on method
+        method_upper = method.upper()
+        if method_upper == "GET":
+            response = requests.get(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
+        elif method_upper == "POST":
+            response = requests.post(url, headers=headers, data=body, timeout=timeout, verify=False, allow_redirects=True)
+        elif method_upper == "PUT":
+            response = requests.put(url, headers=headers, data=body, timeout=timeout, verify=False, allow_redirects=True)
+        elif method_upper == "DELETE":
+            response = requests.delete(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
+        elif method_upper == "PATCH":
+            response = requests.patch(url, headers=headers, data=body, timeout=timeout, verify=False, allow_redirects=True)
+        else:
+            print(f"DEBUG: Unsupported HTTP method: {method}")
+            return {
+                "url": url,
+                "error": f"Unsupported HTTP method: {method}",
+                "success": False
+            }
         
         print(f"DEBUG: Request successful - Status: {response.status_code}, Content length: {len(response.text)}")
         
         return {
             "url": url,
+            "method": method_upper,
             "status_code": response.status_code,
             "headers": dict(response.headers),
             "content": response.text,
@@ -103,6 +186,7 @@ def make_request(url: str, timeout: int = 10) -> Dict[str, Any]:
         print(f"DEBUG: Request failed for {url} - Error: {str(e)}")
         return {
             "url": url,
+            "method": method.upper() if method else "GET",
             "error": str(e),
             "success": False
         }
@@ -179,26 +263,142 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
     print(f"DEBUG: Found {len(matches)} fingerprint matches for this response")
     return matches
 
+def extract_target_domains(target_data: Dict[str, Any]) -> Set[str]:
+    """Extract target domains from target data for service scanning"""
+    domains = set()
+    
+    print("DEBUG: Extracting target domains for service-based scanning...")
+    
+    # Extract domains from web_technologies URLs
+    if "web_technologies" in target_data:
+        web_tech_urls = list(target_data["web_technologies"].keys())
+        print(f"DEBUG: Found {len(web_tech_urls)} URLs in web_technologies")
+        for url in web_tech_urls:
+            try:
+                parsed = urlparse(url)
+                domain = parsed.netloc.replace('www.', '')
+                if domain:
+                    domains.add(domain)
+                    print(f"DEBUG: Extracted domain: {domain}")
+            except Exception as e:
+                print(f"DEBUG: Error parsing URL {url}: {e}")
+    
+    # Extract from directories
+    if "directories" in target_data:
+        dir_count = 0
+        for directory in target_data["directories"]:
+            if "url" in directory:
+                try:
+                    parsed = urlparse(directory["url"])
+                    domain = parsed.netloc.replace('www.', '')
+                    if domain:
+                        domains.add(domain)
+                        dir_count += 1
+                        print(f"DEBUG: Extracted domain from directory: {domain}")
+                except Exception as e:
+                    print(f"DEBUG: Error parsing directory URL {directory['url']}: {e}")
+        print(f"DEBUG: Found {dir_count} domains in directories")
+    
+    # Extract from api_endpoints
+    if "api_endpoints" in target_data:
+        api_count = 0
+        for endpoint in target_data["api_endpoints"]:
+            if "url" in endpoint:
+                try:
+                    parsed = urlparse(endpoint["url"])
+                    domain = parsed.netloc.replace('www.', '')
+                    if domain:
+                        domains.add(domain)
+                        api_count += 1
+                        print(f"DEBUG: Extracted domain from API endpoint: {domain}")
+                except Exception as e:
+                    print(f"DEBUG: Error parsing API URL {endpoint['url']}: {e}")
+        print(f"DEBUG: Found {api_count} domains in api_endpoints")
+    
+    print(f"DEBUG: Total unique target domains extracted: {len(domains)}")
+    return domains
+
+def generate_service_requests(services: List[Dict[str, Any]], target_domains: Set[str]) -> List[Dict[str, Any]]:
+    """Generate HTTP requests from service definitions and target domains"""
+    requests_to_make = []
+    
+    print(f"DEBUG: Generating requests for {len(services)} services and {len(target_domains)} domains...")
+    
+    for service in services:
+        request_config = service.get("request", {})
+        method = request_config.get("method", "GET")
+        base_url = request_config.get("baseURL", "")
+        paths = request_config.get("path", ["/"])
+        headers = request_config.get("headers", [])
+        body = request_config.get("body", None)
+        
+        service_name = service.get("metadata", {}).get("serviceName", f"Service {service.get('id', 'Unknown')}")
+        
+        for domain in target_domains:
+            # Replace {TARGET} placeholder with actual domain
+            actual_base_url = base_url.replace("{TARGET}", domain)
+            
+            if os.getenv("ENVIRONMENT") == "development":
+                print(f"DEBUG: Adjusting protocol for domain {domain}")
+                actual_base_url = actual_base_url.replace("https://", "http://")
+
+            for path in paths:
+                full_url = actual_base_url + path
+                
+                request_info = {
+                    "url": full_url,
+                    "method": method,
+                    "headers": headers,
+                    "body": body,
+                    "service": service,
+                    "service_name": service_name,
+                    "target_domain": domain
+                }
+                
+                requests_to_make.append(request_info)
+                print(f"DEBUG: Generated {method} request: {full_url} for service: {service_name}")
+    
+    print(f"DEBUG: Total requests to make: {len(requests_to_make)}")
+    return requests_to_make
+
 def scan_target(services: List[Dict[str, Any]], target_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Scan all URLs from target data for fingerprints"""
-    urls = extract_urls_from_target(target_data)
+    """Scan target domains using service definitions"""
+    target_domains = extract_target_domains(target_data)
     all_matches = []
     
-    print(f"DEBUG: Starting scan of {len(urls)} URLs...")
+    if not target_domains:
+        print("DEBUG: No target domains found!")
+        return all_matches
     
-    for i, url in enumerate(urls, 1):
-        print(f"\nDEBUG: === Scanning URL {i}/{len(urls)} ===")
-        print(f"DEBUG: Current URL: {url}")
+    requests_to_make = generate_service_requests(services, target_domains)
+    
+    print(f"DEBUG: Starting scan with {len(requests_to_make)} requests...")
+    
+    for i, request_info in enumerate(requests_to_make, 1):
+        print(f"\nDEBUG: === Making Request {i}/{len(requests_to_make)} ===")
+        print(f"DEBUG: {request_info['method']} {request_info['url']}")
+        print(f"DEBUG: Service: {request_info['service_name']}")
         
-        response_data = make_request(url)
+        response_data = make_request(
+            url=request_info["url"],
+            method=request_info["method"],
+            custom_headers=request_info["headers"],
+            body=request_info["body"]
+        )
         
         if response_data["success"]:
             print(f"DEBUG: Request successful, checking for fingerprints...")
-            matches = check_fingerprints_in_response(services, response_data)
-            all_matches.extend(matches)
-            print(f"DEBUG: Scan complete for {url} - Status: {response_data['status_code']} - Found {len(matches)} fingerprint matches")
+            # Check if this specific service matches
+            service_matches = check_fingerprints_in_response([request_info["service"]], response_data)
+            if service_matches:
+                # Add additional context to matches
+                for match in service_matches:
+                    match["target_domain"] = request_info["target_domain"]
+                    match["method"] = request_info["method"]
+                all_matches.extend(service_matches)
+            print(f"DEBUG: Scan complete - Status: {response_data['status_code']} - Found {len(service_matches)} matches")
         else:
-            print(f"DEBUG: Request failed for {url} - Error: {response_data['error']}")
+            print(f"DEBUG: Request failed - Error: {response_data['error']}")
         
         time.sleep(0.5)
     
@@ -210,8 +410,18 @@ def main():
     """Main function"""
     print("DEBUG: Starting fingerprint scanner...")
     try:
-        print("DEBUG: Step 1 - Loading services configuration...")
-        services = load_services(SERVICES_JSON_PATH)
+        print("DEBUG: Step 1 - Choose services configuration source...")
+        print("1. Use single services.json file (legacy)")
+        print("2. Use modular service files (recommended)")
+        choice = input("Choose option (1 or 2): ").strip()
+        
+        if choice == "2":
+            print("DEBUG: Loading services from modular files...")
+            services = load_services(use_directory=True)
+        else:
+            print("DEBUG: Loading services from single file...")
+            services = load_services(SERVICES_JSON_PATH)
+        
         print(f"DEBUG: Loaded {len(services)} service fingerprints")
         
         print("DEBUG: Step 2 - Getting target data file...")
@@ -234,6 +444,8 @@ def main():
             for i, match in enumerate(matches, 1):
                 print(f"DEBUG: Match {i}/{len(matches)}:")
                 print(f"URL: {match['url']}")
+                print(f"Method: {match.get('method', 'GET')}")
+                print(f"Target Domain: {match.get('target_domain', 'N/A')}")
                 print(f"Service: {match['service']} (ID: {match['service_id']})")
                 print(f"Fingerprint: {match['fingerprint']}")
                 print(f"Description: {match['description']}")

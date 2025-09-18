@@ -1,0 +1,24 @@
+{
+  "web_technologies": {
+    "https://api.example.com": {
+      "technologies": [
+        {
+          "name": "GraphQL",
+          "version": "Unknown",
+          "categories": ["API"]
+        }
+      ]
+    },
+    "https://test.lightning.force.com": {
+      "technologies": [
+        {
+          "name": "Salesforce",
+          "version": "Unknown", 
+          "categories": ["CRM"]
+        }
+      ]
+    }
+  },
+  "directories": [],
+  "api_endpoints": []
+}
