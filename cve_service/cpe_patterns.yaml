@@ -1,0 +1,26 @@
+patterns:
+  - vendor: "openbsd"
+    product: "openssh"
+    regex: "OpenSSH[_-]([0-9\\.]+)"
+    cpe_prefix: "cpe:2.3:a"
+
+  - vendor: "apache"
+    product: "http_server"
+    regex: "Apache/([0-9\\.]+)"
+    cpe_prefix: "cpe:2.3:a"
+
+  - vendor: "openssl"
+    product: "openssl"
+    regex: "OpenSSL/([0-9\\.]+)"
+    cpe_prefix: "cpe:2.3:a"
+
+  - vendor: "php"
+    product: "php"
+    regex: "PHP/([0-9\\.]+)"
+    cpe_prefix: "cpe:2.3:a"
+
+  - vendor: "rocky"
+    product: "rocky_linux"
+    regex: "Rocky Linux"
+    default_version: "9"
+    cpe_prefix: "cpe:2.3:o"
