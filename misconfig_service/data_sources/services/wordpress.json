@@ -61,37 +61,7 @@
             ]
         }
     },
-    {
-        "id": 303,
-        "request": {
-            "method": "GET",
-            "baseURL": "https://{TARGET}",
-            "path": ["/wp-content/debug.log"],
-            "body": null
-        },
-        "response": {
-            "statusCode": 200,
-            "detectionFingerprints": [],
-            "fingerprints": [
-                "[error]",
-                "PHP Fatal error",
-                "WordPress database error"
-            ]
-        },
-        "metadata": {
-            "service": "wordpress",
-            "serviceName": "WordPress Debug Log Exposed",
-            "description": "WordPress debug log is publicly accessible, potentially exposing sensitive error information and system paths.",
-            "reproductionSteps": [
-                "Visit the URL",
-                "Check if debug log content is displayed"
-            ],
-            "references": [
-                "https://wordpress.org/support/article/debugging-in-wordpress/",
-                "https://codex.wordpress.org/WP_DEBUG"
-            ]
-        }
-    },
+    
     {
         "id": 304,
         "request": {

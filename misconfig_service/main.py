@@ -464,6 +464,89 @@ def main():
                 if match['references']:
                     print(f"References: {', '.join(match['references'])}")
                 print("-" * 50)
+            
+            # Ask user if they want to run exploits
+            print(f"\nDEBUG: === EXPLOIT FRAMEWORK ===")
+            run_exploits = input("Do you want to run exploit tests on detected vulnerabilities? (y/N): ").strip().lower()
+            
+            if run_exploits in ['y', 'yes']:
+                print("DEBUG: Step 6 - Running exploit framework...")
+                try:
+                    from exploits import ExploitManager, ExploitSeverity
+                    
+                    exploit_manager = ExploitManager()
+                    
+                    # Ask for maximum severity level
+                    print("\nAvailable severity levels:")
+                    print("1. INFO - Information gathering only")
+                    print("2. LOW - Safe reconnaissance") 
+                    print("3. MEDIUM - Limited security testing")
+                    print("4. HIGH - Comprehensive security testing")
+                    print("5. CRITICAL - Advanced penetration testing")
+                    
+                    severity_choice = input("Choose maximum severity level (1-3 recommended): ").strip()
+                    severity_map = {
+                        '1': ExploitSeverity.INFO,
+                        '2': ExploitSeverity.LOW,
+                        '3': ExploitSeverity.MEDIUM,
+                        '4': ExploitSeverity.HIGH,
+                        '5': ExploitSeverity.CRITICAL
+                    }
+                    
+                    max_severity = severity_map.get(severity_choice, ExploitSeverity.MEDIUM)
+                    print(f"Selected maximum severity: {max_severity.value.upper()}")
+                    
+                    # Execute exploits
+                    exploit_results = exploit_manager.execute_exploits(matches, max_severity)
+                    
+                    # Display exploit results
+                    if exploit_results:
+                        print(f"\nDEBUG: === EXPLOIT RESULTS ===")
+                        print(f"DEBUG: Executed {len(exploit_results)} exploits:\n")
+                        
+                        for i, result in enumerate(exploit_results, 1):
+                            status = "✅ SUCCESS" if result.success else "❌ FAILED"
+                            print(f"Exploit {i}/{len(exploit_results)} - {status}")
+                            print(f"Name: {result.exploit_name}")
+                            print(f"Severity: {result.severity.value.upper()}")
+                            print(f"Title: {result.title}")
+                            print(f"Description: {result.description}")
+                            
+                            if result.evidence:
+                                print(f"Evidence items: {len(result.evidence)}")
+                                # Show key evidence
+                                for key, value in list(result.evidence.items())[:3]:
+                                    print(f"  - {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}")
+                            
+                            if result.recommendations:
+                                print(f"Recommendations: {len(result.recommendations)} items")
+                                for rec in result.recommendations[:2]:
+                                    print(f"  - {rec}")
+                            
+                            print("-" * 50)
+                        
+                        # Generate report
+                        import os
+                        report_dir = "reports"
+                        os.makedirs(report_dir, exist_ok=True)
+                        
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        report_file = os.path.join(report_dir, f"exploit_report_{timestamp}.json")
+                        
+                        report = exploit_manager.generate_report(report_file)
+                        print(f"\nDEBUG: Exploit report generated: {report_file}")
+                        print(f"DEBUG: Total exploits executed: {report['total_exploits_executed']}")
+                        print(f"DEBUG: Successful exploits: {report['successful_exploits']}")
+                    else:
+                        print("DEBUG: No applicable exploits found for detected vulnerabilities.")
+                        
+                except ImportError as e:
+                    print(f"DEBUG: Exploit framework not available: {e}")
+                except Exception as e:
+                    print(f"DEBUG: Error running exploits: {e}")
+            else:
+                print("DEBUG: Skipping exploit framework.")
         else:
             print("\nDEBUG: No fingerprints found in the scanned URLs.")
             
