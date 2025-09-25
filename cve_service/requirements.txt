@@ -1,0 +1,5 @@
+PyYAML>=6.0
+requests>=2.31.0   # if you plan to fetch CVEs from NVD API later
+google-generativeai>=0.3.0  # For Gemini API integration
+packaging>=23.0  # For version comparison
+distro>=1.8.0  # For Linux distribution detection (optional)
