@@ -20,6 +20,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress Configuration File Exposed",
+            "exploitType": "config_exposure",
             "description": "WordPress wp-config.php file is publicly accessible, exposing database credentials and authentication keys.",
             "reproductionSteps": [
                 "Visit the URL",
@@ -50,6 +51,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress Installation Page Accessible",
+            "exploitType": "installation_page",
             "description": "WordPress installation page is still accessible, indicating incomplete setup or reinstallation possibility.",
             "reproductionSteps": [
                 "Visit the URL",
@@ -81,6 +83,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress Uploads Directory Browsable",
+            "exploitType": "directory_browsing",
             "description": "WordPress uploads directory allows directory browsing, potentially exposing uploaded media files.",
             "reproductionSteps": [
                 "Visit the URL",
@@ -111,6 +114,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress Readme File Exposed",
+            "exploitType": "info_disclosure",
             "description": "WordPress readme.html file is accessible, potentially revealing WordPress version information.",
             "reproductionSteps": [
                 "Visit the URL",
@@ -142,6 +146,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress REST API User Enumeration",
+            "exploitType": "user_enumeration",
             "description": "WordPress REST API exposes user information without authentication, allowing user enumeration.",
             "reproductionSteps": [
                 "Visit the URL",
@@ -172,6 +177,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress Admin Panel Accessible",
+            "exploitType": "admin_panel",
             "description": "WordPress admin login panel is publicly accessible without rate limiting or protection.",
             "reproductionSteps": [
                 "Visit the URL",
@@ -215,6 +221,7 @@
         "metadata": {
             "service": "wordpress",
             "serviceName": "WordPress XML-RPC Enabled",
+            "exploitType": "xmlrpc",
             "description": "WordPress XML-RPC interface can be abused for brute force attacks, DDoS amplification, and unauthorized content manipulation if not properly secured or disabled.",
             "reproductionSteps": [
                 "POST to /xmlrpc.php with system.listMethods",

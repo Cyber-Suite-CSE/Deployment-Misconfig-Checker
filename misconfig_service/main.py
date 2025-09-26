@@ -232,7 +232,10 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
         
         # If any fingerprints matched, create a single match entry for this service
         if matched_fingerprints:
-            matches.append({
+            # Extract exploitType from service metadata for precise exploit matching
+            exploit_type = service.get("metadata", {}).get("exploitType", None)
+            
+            match_entry = {
                 "url": response_data["url"],
                 "service": service_name,
                 "service_id": service.get("id", "Unknown"),
@@ -242,7 +245,16 @@ def check_fingerprints_in_response(services: List[Dict[str, Any]], response_data
                 "references": service.get("metadata", {}).get("references", []),
                 "found_in_content": found_in_content_any,
                 "found_in_headers": found_in_headers_any
-            })
+            }
+            
+            # Add exploitType if available for precise exploit matching
+            if exploit_type:
+                match_entry["exploit_type"] = exploit_type
+                print(f"DEBUG: Added exploitType '{exploit_type}' to match for service '{service_name}'")
+            else:
+                print(f"DEBUG: No exploitType defined for service '{service_name}' - exploit matching will use fallback")
+            
+            matches.append(match_entry)
     
     print(f"DEBUG: Found {len(matches)} fingerprint matches for this response")
     return matches
