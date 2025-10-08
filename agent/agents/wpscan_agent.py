@@ -132,6 +132,7 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                 content = str(response)
 
             if "[DEBUG]" not in content and "execute_wpscan" not in str(response):
+                executed = False
                 print(f"{Fore.RED}[WPSCAN Agent] WARNING: No tool execution detected!{Style.RESET_ALL}")
                 print(f"{Fore.YELLOW}[WPSCAN Agent] Attempting direct tool execution...{Style.RESET_ALL}")
 
@@ -148,15 +149,17 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                     fallback_result = execute_wpscan("wpscan --help")
 
                 content = f"Direct execution result:\n{fallback_result}"
-
-            print(f"{Fore.GREEN}[WPSCAN Agent] Execution complete{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}[WPSCAN Agent] ========================================{Style.RESET_ALL}")
+            else:
+                executed = True
+                print(f"{Fore.GREEN}[WPSCAN Agent] Execution complete{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[WPSCAN Agent] ========================================{Style.RESET_ALL}")
 
             return {
                 "success": True,
                 "result": content,
                 "request": request,
-                "executed": "[DEBUG]" in content or "Direct execution" in content
+                # "executed": "[DEBUG]" in content or "Direct execution" in content
+                "executed": executed
             }
 
         except Exception as e:
