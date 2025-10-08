@@ -207,10 +207,12 @@ TASKS:
         if not execution_history:
             return {"done": True, "reason": "No execution history"}
 
-        history_summary = "\n".join([
-            f"Agent: {exec['agent']}\nTask: {exec['task']}\nOutput Summary: {exec['output'][:500]}..."
-            for exec in execution_history
-        ])
+        import json
+        history_summary = ""
+        for exec in execution_history:
+            history_summary += f"\n--- Agent: {exec['agent']} ---\n"
+            history_summary += f"Task: {exec['task']}\n"
+            history_summary += f"Structured Results:\n{json.dumps(exec.get('structured_data', {}), indent=2)}\n"
 
         analysis_prompt = f"""Analyze the execution results and determine next steps.
 
@@ -376,10 +378,13 @@ Respond with ONLY the task description, nothing else."""
                 
                 pure_output = self._extract_pure_output(result)
                 
+                print(f"{Fore.BLUE}[Orchestrator] Parsing agent output into structured format...{Style.RESET_ALL}")
+                structured_data = self.tool_agents[agent_name].parse_output(result.get("result", ""))
+                
                 execution_history.append({
                     "agent": agent_name,
                     "task": specific_task,
-                    "output": pure_output,
+                    "structured_data": structured_data,
                     "raw_result": result.get("result", "")
                 })
                 
@@ -418,10 +423,12 @@ Respond with ONLY the task description, nothing else."""
         if not execution_history:
             return "❌ No agents were executed successfully"
         
-        history_details = "\n\n".join([
-            f"Agent: {exec['agent'].upper()}\nTask: {exec['task']}\nOutput:\n{exec['raw_result'][:1000]}..."
-            for exec in execution_history
-        ])
+        import json
+        history_details = ""
+        for exec in execution_history:
+            history_details += f"\n--- Agent: {exec['agent'].upper()} ---\n"
+            history_details += f"Task: {exec['task']}\n"
+            history_details += f"Structured Results:\n{json.dumps(exec.get('structured_data', {}), indent=2)}\n"
         
         synthesis_prompt = f"""Synthesize these multi-agent execution results for the user:
 

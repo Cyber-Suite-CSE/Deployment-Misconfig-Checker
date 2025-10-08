@@ -12,6 +12,7 @@ import re
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.wpscan_tool import execute_wpscan
+from models.structured_results import WPScanResult, PluginInfo, ThemeInfo
 
 init(autoreset=True)
 
@@ -169,6 +170,64 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                 "error": str(e),
                 "request": request,
                 "executed": False
+            }
+
+    def parse_output(self, raw_output: str) -> Dict[str, Any]:
+        """
+        Parse raw WPScan output into structured format using LLM
+
+        Args:
+            raw_output: Raw wpscan command output
+
+        Returns:
+            Dictionary with structured, parsed data
+        """
+        print(f"{Fore.CYAN}[WPSCAN Agent] Parsing output into structured format...{Style.RESET_ALL}")
+        
+        try:
+            parser_llm = self.llm.with_structured_output(WPScanResult)
+            
+            parse_prompt = f"""Parse this WPScan output into structured format.
+
+Raw WPScan output:
+{raw_output}
+
+Extract the following information:
+1. Target WordPress URL
+2. WordPress version if detected
+3. Whether WordPress was confirmed (not just suspected)
+4. All discovered plugins with names, versions, and any vulnerabilities
+5. All discovered themes with names, versions, and vulnerabilities
+6. Enumerated usernames
+7. All vulnerabilities found (both core and plugins/themes)
+8. Any other interesting findings (exposed files, configs, etc)
+9. Brief summary of the scan (2-3 sentences)
+
+Be accurate and only include information that is actually present in the output.
+If a field has no data, use the default empty value."""
+
+            structured_result = parser_llm.invoke(parse_prompt)
+            
+            result_dict = structured_result if isinstance(structured_result, dict) else structured_result.model_dump()
+            
+            num_plugins = len(result_dict.get("plugins_found", []))
+            num_vulns = len(result_dict.get("vulnerabilities", []))
+            print(f"{Fore.GREEN}[WPSCAN Agent] Parsing complete - {num_plugins} plugins, {num_vulns} vulnerabilities{Style.RESET_ALL}")
+            
+            return result_dict
+            
+        except Exception as e:
+            print(f"{Fore.RED}[WPSCAN Agent] Parsing error: {str(e)}{Style.RESET_ALL}")
+            return {
+                "target_url": "unknown",
+                "wordpress_version": None,
+                "wordpress_confirmed": False,
+                "plugins_found": [],
+                "themes_found": [],
+                "users_enumerated": [],
+                "vulnerabilities": [],
+                "interesting_findings": [],
+                "scan_summary": f"Failed to parse WPScan output: {str(e)}"
             }
 
     def get_capabilities(self) -> List[str]:

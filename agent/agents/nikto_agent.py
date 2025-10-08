@@ -12,6 +12,7 @@ import re
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.nikto_tool import execute_nikto
+from models.structured_results import NiktoResult
 
 init(autoreset=True)
 
@@ -170,6 +171,66 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
                 "error": str(e),
                 "request": request,
                 "executed": False
+            }
+
+    def parse_output(self, raw_output: str) -> Dict[str, Any]:
+        """
+        Parse raw Nikto output into structured format
+        
+        Args:
+            raw_output: Raw nikto scan output
+            
+        Returns:
+            Dictionary containing structured nikto results
+        """
+        try:
+            parsing_llm = init_chat_model(
+                "gemini-2.0-flash-exp", 
+                model_provider="google_genai", 
+                temperature=0.1
+            )
+            
+            structured_llm = parsing_llm.with_structured_output(NiktoResult)
+            
+            parsing_prompt = f"""Parse the following Nikto scan output into structured format.
+
+Extract:
+- Target host/URL and port
+- Web server software/version
+- Whether WordPress is detected
+- Vulnerabilities found (with IDs if available)
+- Interesting files/directories/findings
+- SSL/TLS information if present
+- Outdated software detected
+- Misconfigurations
+- A brief summary
+
+Nikto Output:
+{raw_output}
+
+Return a structured NiktoResult object."""
+
+            result = structured_llm.invoke(parsing_prompt)
+            result_dict = result if isinstance(result, dict) else result.model_dump()
+            
+            num_vulns = len(result_dict.get("vulnerabilities", []))
+            print(f"{Fore.GREEN}[NIKTO Agent] Parsing complete - found {num_vulns} vulnerabilities{Style.RESET_ALL}")
+            
+            return result_dict
+            
+        except Exception as e:
+            print(f"{Fore.RED}[NIKTO Agent] Parse error: {str(e)}{Style.RESET_ALL}")
+            return {
+                "target": "unknown",
+                "port": 80,
+                "server_info": None,
+                "wordpress_detected": False,
+                "vulnerabilities": [],
+                "interesting_findings": [],
+                "ssl_info": None,
+                "outdated_software": [],
+                "misconfigurations": [],
+                "scan_summary": "Failed to parse nikto output"
             }
 
     def get_capabilities(self) -> List[str]:
