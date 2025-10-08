@@ -5,8 +5,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 from colorama import init, Fore, Style
 from agents.nmap_agent import NmapAgent
+from agents.wpscan_agent import WpscanAgent
+from agents.nikto_agent import NiktoAgent
 
-# Initialize colorama
 init(autoreset=True)
 
 
@@ -19,6 +20,8 @@ ORCHESTRATOR_PROMPT = """You are the main orchestrator agent for a cybersecurity
 
 Currently available tool agents:
 - NMAP Agent: Specializes in network scanning, port discovery, service detection, OS fingerprinting
+- WPScan Agent: Specializes in WordPress vulnerability scanning, plugin/theme enumeration, user discovery
+- Nikto Agent: Specializes in web server vulnerability scanning, CGI testing, SSL/TLS configuration, server misconfiguration detection
 
 Your responsibilities:
 1. ANALYZE the user's request to understand their intent
@@ -29,6 +32,8 @@ Your responsibilities:
 
 Guidelines:
 - For network scanning requests → NMAP Agent
+- For WordPress security testing → WPScan Agent
+- For web server vulnerability scanning → Nikto Agent
 - If a request needs multiple tools, break it down into sequential steps
 - Always provide context about what you're doing
 - Explain results in a user-friendly manner
@@ -38,6 +43,8 @@ Examples of task decomposition:
 - "Scan my network" → "Use NMAP Agent to perform network discovery scan on local subnet"
 - "Find web servers" → "Use NMAP Agent to scan for ports 80, 443, 8080, 8443"
 - "Check if server is vulnerable" → "Use NMAP Agent for version detection and vulnerability scripts"
+- "Scan WordPress site" → "Use WPScan Agent to scan for WordPress vulnerabilities"
+- "Find WordPress plugins" → "Use WPScan Agent to enumerate plugins"
 
 Remember: You don't execute tools directly - you delegate to specialized agents."""
 
@@ -57,9 +64,12 @@ class OrchestratorAgent:
         )
 
         # Initialize tool agents
-        self.tool_agents = {"nmap": NmapAgent(llm=self.llm)}
+        self.tool_agents = {
+            "nmap": NmapAgent(llm=self.llm),
+            "wpscan": WpscanAgent(llm=self.llm),
+            "nikto": NiktoAgent(llm=self.llm)
+        }
 
-        # Available tools mapping
         self.tool_capabilities = {
             "nmap": [
                 "network scanning",
@@ -68,6 +78,22 @@ class OrchestratorAgent:
                 "OS detection",
                 "vulnerability scanning",
                 "host discovery",
+            ],
+            "wpscan": [
+                "WordPress vulnerability scanning",
+                "plugin enumeration",
+                "theme enumeration",
+                "user enumeration",
+                "WordPress version detection",
+                "security testing",
+            ],
+            "nikto": [
+                "web server vulnerability scanning",
+                "CGI vulnerability detection",
+                "SSL/TLS configuration testing",
+                "server misconfiguration identification",
+                "outdated software detection",
+                "common web application vulnerabilities",
             ]
         }
 
@@ -150,11 +176,42 @@ TASKS:
             Final response to user
         """
         try:
-            # Step 1: Analyze the request
             analysis = self._analyze_request(user_request)
 
-            # Step 2: Create specific task for NMAP agent based on analysis
-            task_prompt = f"""Based on this analysis:
+            analysis_text = analysis['analysis'].lower()
+            if "wordpress" in user_request.lower() or "wpscan" in user_request.lower() or "wp" in user_request.lower():
+                agent_name = "wpscan"
+                task_prompt = f"""Based on this analysis:
+{analysis['analysis']}
+
+Original user request: "{user_request}"
+
+Create a specific, actionable task for the WPScan agent. Be precise about:
+- What URL to scan
+- What to enumerate (plugins, themes, users, etc.)
+- Any specific scan options needed
+
+Respond with ONLY the task description, nothing else."""
+                
+                print(f"\n{Fore.MAGENTA}[Orchestrator] Task for WPScan Agent:{Style.RESET_ALL}")
+            elif "nikto" in user_request.lower() or "web" in user_request.lower() or ("http" in user_request.lower() and "wordpress" not in user_request.lower()):
+                agent_name = "nikto"
+                task_prompt = f"""Based on this analysis:
+{analysis['analysis']}
+
+Original user request: "{user_request}"
+
+Create a specific, actionable task for the Nikto agent. Be precise about:
+- What URL/host to scan
+- What port to use
+- Any specific scan options needed
+
+Respond with ONLY the task description, nothing else."""
+                
+                print(f"\n{Fore.MAGENTA}[Orchestrator] Task for Nikto Agent:{Style.RESET_ALL}")
+            else:
+                agent_name = "nmap"
+                task_prompt = f"""Based on this analysis:
 {analysis['analysis']}
 
 Original user request: "{user_request}"
@@ -165,6 +222,8 @@ Create a specific, actionable task for the NMAP agent. Be precise about:
 - Any specific scan techniques needed
 
 Respond with ONLY the task description, nothing else."""
+                
+                print(f"\n{Fore.MAGENTA}[Orchestrator] Task for NMAP Agent:{Style.RESET_ALL}")
 
             messages = [
                 SystemMessage(content=ORCHESTRATOR_PROMPT),
@@ -174,29 +233,22 @@ Respond with ONLY the task description, nothing else."""
             task_response = self.llm.invoke(messages)
             specific_task = task_response.content
 
-            # Make it even more explicit
             if (
                 "EXECUTE" not in specific_task.upper()
                 and "RUN" not in specific_task.upper()
             ):
                 specific_task = f"EXECUTE IMMEDIATELY: {specific_task}"
 
-            print(
-                f"\n{Fore.MAGENTA}[Orchestrator] Task for NMAP Agent:{Style.RESET_ALL}"
-            )
             print(f"{Fore.WHITE}{specific_task}{Style.RESET_ALL}\n")
 
-            # Step 3: Route for execution
-            result = self._route_to_agent("nmap", specific_task)
+            result = self._route_to_agent(agent_name, specific_task)
 
-            # Step 4: Process and return results
             if result["success"]:
                 if result.get("executed"):
                     print(
                         f"{Fore.GREEN}[Orchestrator] Execution successful!{Style.RESET_ALL}"
                     )
 
-                    # Format the response
                     synthesis_prompt = f"""Format these REAL EXECUTION RESULTS for the user:
 
 Original request: "{user_request}"
