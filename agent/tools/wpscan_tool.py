@@ -19,10 +19,10 @@ class SlidingWindowDisplay:
         self.lines = []
         self.terminal_width = shutil.get_terminal_size((80, 24)).columns
         self.is_initialized = False
+        self.current_line_count = 0
         
     def initialize_display(self):
         if not self.is_initialized:
-            print("\n" * self.max_lines)
             self.is_initialized = True
     
     def add_line(self, line):
@@ -34,24 +34,23 @@ class SlidingWindowDisplay:
             line = line[:self.terminal_width - 7] + "..."
             
         self.lines.append(line)
-        if len(self.lines) > self.max_lines:
+        
+        if len(self.lines) <= self.max_lines:
+            print(f"{Fore.WHITE}{line}{Style.RESET_ALL}")
+            sys.stdout.flush()
+            self.current_line_count += 1
+        else:
             self.lines.pop(0)
-        self.update_display()
+            self.update_display(line)
     
-    def update_display(self):
+    def update_display(self, new_line):
         if not self.is_initialized:
             return
-            
+        
         sys.stdout.write(f"\033[{self.max_lines}A")
-        sys.stdout.write("\033[J")
-        
-        for line in self.lines:
-            if line.strip():
-                print(f"{Fore.WHITE}{line}{Style.RESET_ALL}")
-        
-        for _ in range(self.max_lines - len(self.lines)):
-            print("")
-        
+        sys.stdout.write("\033[1M")
+        sys.stdout.write(f"\033[{self.max_lines - 1}B")
+        print(f"{Fore.WHITE}{new_line}{Style.RESET_ALL}")
         sys.stdout.flush()
     
     def finalize(self, full_output):
