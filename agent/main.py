@@ -10,8 +10,9 @@ from dotenv import load_dotenv
 from colorama import init, Fore, Style, Back
 from agents.orchestrator_agent import OrchestratorAgent
 from tools.nmap_tool import validate_nmap_installed
+from tools.wpscan_tool import validate_wpscan_installed
+from tools.nikto_tool import validate_nikto_installed
 
-# Initialize colorama
 init(autoreset=True)
 
 
@@ -43,6 +44,9 @@ def print_help():
 {Fore.CYAN}▸{Style.RESET_ALL} "Check services on 192.168.1.1" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nmap -sV 192.168.1.1
 {Fore.CYAN}▸{Style.RESET_ALL} "Stealth scan example.com" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nmap -sS example.com
 {Fore.CYAN}▸{Style.RESET_ALL} "Show nmap help" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nmap --help
+{Fore.CYAN}▸{Style.RESET_ALL} "Scan WordPress site https://example.com" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url https://example.com
+{Fore.CYAN}▸{Style.RESET_ALL} "Enumerate WordPress users" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url <url> --enumerate u
+{Fore.CYAN}▸{Style.RESET_ALL} "Find WordPress plugins" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url <url> --enumerate p
 
 {Fore.MAGENTA}⚠️  ALL COMMANDS RUN FOR REAL - DEBUG OUTPUT WILL SHOW ⚠️{Style.RESET_ALL}
     """
@@ -86,16 +90,39 @@ def main():
         print(f"{Fore.YELLOW}GOOGLE_API_KEY=your_api_key_here{Style.RESET_ALL}")
         sys.exit(1)
 
-    # Check nmap installation
     print(f"{Fore.CYAN}Checking system requirements...{Style.RESET_ALL}")
-    if not validate_nmap_installed():
+    
+    nmap_installed = validate_nmap_installed()
+    wpscan_installed = validate_wpscan_installed()
+    nikto_installed = validate_nikto_installed()
+    
+    if not nmap_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: nmap not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
         print("\nInstall nmap:")
         print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nmap")
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nmap")
         print(f"  {Fore.GREEN}Windows:{Style.RESET_ALL} https://nmap.org/download.html")
-        print(f"\n{Fore.YELLOW}Or run in a container with nmap pre-installed{Style.RESET_ALL}")
+    
+    if not wpscan_installed:
+        print(f"\n{Fore.YELLOW}⚠️  Warning: wpscan not detected{Style.RESET_ALL}")
+        print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
+        print("\nInstall wpscan:")
+        print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install wpscan")
+        print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install wpscan")
+        print(f"  {Fore.GREEN}Ruby Gem:{Style.RESET_ALL} gem install wpscan")
+        print(f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker pull wpscanteam/wpscan")
+    
+    if not nikto_installed:
+        print(f"\n{Fore.YELLOW}⚠️  Warning: nikto not detected{Style.RESET_ALL}")
+        print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
+        print("\nInstall nikto:")
+        print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nikto")
+        print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nikto")
+        print(f"  {Fore.GREEN}CPAN:{Style.RESET_ALL} cpan install NIKTO")
+    
+    if not nmap_installed or not wpscan_installed or not nikto_installed:
+        print(f"\n{Fore.YELLOW}Or run in a container with tools pre-installed{Style.RESET_ALL}")
 
         response = input(f"\n{Fore.CYAN}Continue anyway? (y/n): {Style.RESET_ALL}")
         if response.lower() != 'y':

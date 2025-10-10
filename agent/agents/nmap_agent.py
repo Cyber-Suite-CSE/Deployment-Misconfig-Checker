@@ -12,8 +12,8 @@ import re
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.nmap_tool import execute_nmap
+from models.structured_results import NmapResult, PortInfo
 
-# Initialize colorama
 init(autoreset=True)
 
 
@@ -141,6 +141,7 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
 
             # Verify execution happened
             if "[DEBUG]" not in content and "execute_nmap" not in str(response):
+                executed = False
                 print(f"{Fore.RED}[NMAP Agent] WARNING: No tool execution detected!{Style.RESET_ALL}")
                 print(f"{Fore.YELLOW}[NMAP Agent] Attempting direct tool execution...{Style.RESET_ALL}")
 
@@ -160,6 +161,8 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                             fallback_result = execute_nmap("nmap --help")
 
                     content = f"Direct execution result:\n{fallback_result}"
+            else:
+                executed = True
 
             print(f"{Fore.GREEN}[NMAP Agent] Execution complete{Style.RESET_ALL}")
             print(f"{Fore.CYAN}[NMAP Agent] ========================================{Style.RESET_ALL}")
@@ -168,7 +171,8 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 "success": True,
                 "result": content,
                 "request": request,
-                "executed": "[DEBUG]" in content or "Direct execution" in content
+                # "executed": "[DEBUG]" in content or "Direct execution" in content
+                "executed": executed
             }
 
         except Exception as e:
@@ -178,6 +182,63 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 "error": str(e),
                 "request": request,
                 "executed": False
+            }
+
+    def parse_output(self, raw_output: str) -> Dict[str, Any]:
+        """
+        Parse raw nmap output into structured format using LLM
+
+        Args:
+            raw_output: Raw nmap command output
+
+        Returns:
+            Dictionary with structured, parsed data
+        """
+        print(f"{Fore.CYAN}[NMAP Agent] Parsing output into structured format...{Style.RESET_ALL}")
+        
+        try:
+            parser_llm = self.llm.with_structured_output(NmapResult)
+            
+            parse_prompt = f"""Parse this nmap scan output into structured format.
+
+Raw nmap output:
+{raw_output}
+
+Extract the following information:
+1. Target host/IP that was scanned
+2. All open ports with their protocol, state, service name, and version
+3. List all unique detected service types (http, ssh, mysql, ftp, etc)
+4. Check if WordPress was detected (look for wp-content, wp-admin, WordPress version, etc)
+5. Check if web servers were found on common ports (80, 443, 8080, 8443, 8000)
+6. OS detection information if present
+7. Any vulnerabilities mentioned in NSE scripts
+8. Whether the host is up or down
+9. Brief summary of the scan (2-3 sentences)
+
+Be accurate and only include information that is actually present in the output.
+If a field has no data, use the default empty value."""
+
+            structured_result = parser_llm.invoke(parse_prompt)
+            
+            result_dict = structured_result if isinstance(structured_result, dict) else structured_result.model_dump()
+            
+            num_ports = len(result_dict.get("open_ports", []))
+            print(f"{Fore.GREEN}[NMAP Agent] Parsing complete - found {num_ports} open ports{Style.RESET_ALL}")
+            
+            return result_dict
+            
+        except Exception as e:
+            print(f"{Fore.RED}[NMAP Agent] Parsing error: {str(e)}{Style.RESET_ALL}")
+            return {
+                "target": "unknown",
+                "open_ports": [],
+                "detected_services": [],
+                "wordpress_detected": False,
+                "web_servers_found": False,
+                "os_detection": None,
+                "vulnerabilities": [],
+                "host_up": True,
+                "scan_summary": f"Failed to parse nmap output: {str(e)}"
             }
 
     def get_capabilities(self) -> List[str]:

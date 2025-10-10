@@ -5,12 +5,14 @@ A hierarchical multi-agent system for cybersecurity and penetration testing task
 ## Architecture
 
 ```
-User → Orchestrator Agent → Tool-Specific Agent (NMAP) → Tool Execution → Response
+User Request → OrchestratorAgent → Tool-Specific Agent (NMAP/WPScan) → Tool Execution → Response
 ```
 
 - **Orchestrator Agent**: Analyzes user requests and routes to appropriate tool agents
 - **NMAP Agent**: Specialized agent for network scanning and reconnaissance
 - **NMAP Tool**: Executes actual nmap commands safely
+- **WPScan Agent**: Specialized agent for WordPress security scanning
+- **WPScan Tool**: Executes actual wpscan commands safely
 
 ## Setup
 
@@ -26,7 +28,14 @@ pip install -r requirements.txt
 - **MacOS**: `brew install nmap`
 - **Windows**: Download from [nmap.org](https://nmap.org/download.html)
 
-### 3. Configure API Key
+### 3. Install WPScan
+
+- **Ubuntu/Debian**: `sudo apt-get install wpscan`
+- **MacOS**: `brew install wpscan`
+- **Ruby Gem**: `gem install wpscan`
+- **Docker**: `docker pull wpscanteam/wpscan`
+
+### 4. Configure API Key
 
 1. Get a Google Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Create a `.env` file:
@@ -57,6 +66,10 @@ python main.py
 - **Stealth scan**: "Perform a stealth scan on example.com"
 - **OS detection**: "Detect the operating system of 10.0.0.1"
 - **Help with nmap**: "Show me how to use nmap for vulnerability scanning"
+- **WordPress scan**: "Scan https://example.com for WordPress vulnerabilities"
+- **Plugin enumeration**: "Find WordPress plugins on https://example.com"
+- **User enumeration**: "Enumerate users on WordPress site https://example.com"
+- **Theme detection**: "Check WordPress themes on https://example.com"
 
 ### Available Commands
 
@@ -72,9 +85,11 @@ python main.py
 cyber_agent_system/
 ├── agents/
 │   ├── orchestrator_agent.py   # Main orchestrator
-│   └── nmap_agent.py           # NMAP specialist
+│   ├── nmap_agent.py           # NMAP specialist
+│   └── wpscan_agent.py         # WPScan specialist
 ├── tools/
-│   └── nmap_tool.py            # NMAP execution tool
+│   ├── nmap_tool.py            # NMAP execution tool
+│   └── wpscan_tool.py          # WPScan execution tool
 ├── main.py                     # Entry point
 ├── requirements.txt            # Dependencies
 ├── .env.example               # Environment template
@@ -101,6 +116,7 @@ To add new tools:
 - [ ] Add Metasploit agent
 - [ ] Add Nikto agent for web vulnerability scanning
 - [ ] Add SQLMap agent for SQL injection testing
+- [x] Add WPScan agent for WordPress security scanning
 - [ ] Implement agent memory for context retention
 - [ ] Add result parsing and structured output
 - [ ] Create web UI interface
