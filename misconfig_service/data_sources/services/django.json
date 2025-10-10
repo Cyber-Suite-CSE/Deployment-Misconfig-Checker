@@ -24,6 +24,7 @@
         "metadata": {
             "service": "django",
             "serviceName": "Python Django Debug Mode Enabled",
+            "exploitType": "debug_mode",
             "description": "A Django application running in debug mode exposes detailed error pages and stack traces, potentially revealing sensitive information about the server, database, and code structure.",
             "reproductionSteps": [
                 "Visit the target Django application URL",
@@ -55,6 +56,7 @@
         "metadata": {
             "service": "django",
             "serviceName": "Django Admin Panel Accessible",
+            "exploitType": "admin_panel",
             "description": "Django admin panel is accessible without proper access controls.",
             "reproductionSteps": [
                 "Visit the URL",
