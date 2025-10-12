@@ -12,6 +12,7 @@ from agents.orchestrator_agent import OrchestratorAgent
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
+from tools.metasploit_tool import validate_metasploit_connection
 
 init(autoreset=True)
 
@@ -47,6 +48,10 @@ def print_help():
 {Fore.CYAN}▸{Style.RESET_ALL} "Scan WordPress site https://example.com" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url https://example.com
 {Fore.CYAN}▸{Style.RESET_ALL} "Enumerate WordPress users" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url <url> --enumerate u
 {Fore.CYAN}▸{Style.RESET_ALL} "Find WordPress plugins" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url <url> --enumerate p
+{Fore.CYAN}▸{Style.RESET_ALL} "Scan web server example.com" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nikto -h example.com
+{Fore.CYAN}▸{Style.RESET_ALL} "Exploit EternalBlue on 192.168.1.100" → {Fore.RED}EXECUTES:{Style.RESET_ALL} Metasploit ms17_010_eternalblue
+{Fore.CYAN}▸{Style.RESET_ALL} "Generate Windows payload" → {Fore.RED}EXECUTES:{Style.RESET_ALL} msfvenom payload generation
+{Fore.CYAN}▸{Style.RESET_ALL} "List Metasploit sessions" → {Fore.RED}EXECUTES:{Style.RESET_ALL} sessions -l
 
 {Fore.MAGENTA}⚠️  ALL COMMANDS RUN FOR REAL - DEBUG OUTPUT WILL SHOW ⚠️{Style.RESET_ALL}
     """
@@ -95,7 +100,8 @@ def main():
     nmap_installed = validate_nmap_installed()
     wpscan_installed = validate_wpscan_installed()
     nikto_installed = validate_nikto_installed()
-    
+    metasploit_connected = validate_metasploit_connection()
+
     if not nmap_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: nmap not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
@@ -103,7 +109,7 @@ def main():
         print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nmap")
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nmap")
         print(f"  {Fore.GREEN}Windows:{Style.RESET_ALL} https://nmap.org/download.html")
-    
+
     if not wpscan_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: wpscan not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
@@ -112,7 +118,7 @@ def main():
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install wpscan")
         print(f"  {Fore.GREEN}Ruby Gem:{Style.RESET_ALL} gem install wpscan")
         print(f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker pull wpscanteam/wpscan")
-    
+
     if not nikto_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: nikto not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
@@ -120,8 +126,16 @@ def main():
         print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nikto")
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nikto")
         print(f"  {Fore.GREEN}CPAN:{Style.RESET_ALL} cpan install NIKTO")
-    
-    if not nmap_installed or not wpscan_installed or not nikto_installed:
+
+    if not metasploit_connected:
+        print(f"\n{Fore.YELLOW}⚠️  Warning: Metasploit RPC not connected{Style.RESET_ALL}")
+        print(f"{Fore.RED}This system has REAL EXPLOITATION CAPABILITIES!{Style.RESET_ALL}")
+        print("\nStart Metasploit RPC:")
+        print(f"  {Fore.GREEN}Start RPC:{Style.RESET_ALL} msfrpcd -P <password> -p 55553")
+        print(f"  {Fore.GREEN}Set .env:{Style.RESET_ALL} MSF_PASSWORD=<password>")
+        print(f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker run -p 55553:55553 metasploit/metasploit-framework")
+
+    if not nmap_installed or not wpscan_installed or not nikto_installed or not metasploit_connected:
         print(f"\n{Fore.YELLOW}Or run in a container with tools pre-installed{Style.RESET_ALL}")
 
         response = input(f"\n{Fore.CYAN}Continue anyway? (y/n): {Style.RESET_ALL}")

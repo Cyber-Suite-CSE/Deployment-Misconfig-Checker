@@ -55,6 +55,7 @@ GOOGLE_API_KEY=your_actual_api_key_here
 Run the system:
 
 ```bash
+msfrpcd -P yourpassword -p 55553
 python main.py
 ```
 

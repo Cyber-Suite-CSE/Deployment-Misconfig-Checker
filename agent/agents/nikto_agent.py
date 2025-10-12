@@ -54,7 +54,9 @@ class NiktoAgent:
 
     def __init__(self, llm=None):
         """Initialize the Nikto execution agent"""
-        print(f"{Fore.GREEN}[NIKTO Agent] Initializing Nikto Execution Agent{Style.RESET_ALL}")
+        print(
+            f"{Fore.GREEN}[NIKTO Agent] Initializing Nikto Execution Agent{Style.RESET_ALL}"
+        )
 
         if llm is None:
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -62,7 +64,7 @@ class NiktoAgent:
                 raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
             self.llm = init_chat_model(
-                "gemini-2.0-flash-exp", model_provider="google_genai", temperature=0.1
+                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
             )
         else:
             self.llm = llm
@@ -84,7 +86,9 @@ class NiktoAgent:
         """
         print(f"{Fore.CYAN}[NIKTO Agent] ========================================")
         print(f"{Fore.YELLOW}[NIKTO Agent] Processing request: {Fore.WHITE}{request}")
-        print(f"{Fore.CYAN}[NIKTO Agent] ========================================{Style.RESET_ALL}")
+        print(
+            f"{Fore.CYAN}[NIKTO Agent] ========================================{Style.RESET_ALL}"
+        )
 
         try:
             execution_request = f"""
@@ -104,7 +108,9 @@ If this is about nikto help, EXECUTE 'nikto -Help'.
 EXECUTE THE COMMAND NOW using execute_nikto tool!
 """
 
-            print(f"{Fore.MAGENTA}[NIKTO Agent] Forcing tool execution...{Style.RESET_ALL}")
+            print(
+                f"{Fore.MAGENTA}[NIKTO Agent] Forcing tool execution...{Style.RESET_ALL}"
+            )
 
             messages = [
                 (
@@ -119,7 +125,9 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
                 ("human", execution_request),
             ]
 
-            print(f"{Fore.YELLOW}[NIKTO Agent] Invoking agent executor...{Style.RESET_ALL}")
+            print(
+                f"{Fore.YELLOW}[NIKTO Agent] Invoking agent executor...{Style.RESET_ALL}"
+            )
             response = self.agent_executor.invoke({"messages": messages})
 
             if isinstance(response, dict) and "messages" in response:
@@ -134,11 +142,19 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
 
             if "[DEBUG]" not in content and "execute_nikto" not in str(response):
                 executed = False
-                print(f"{Fore.RED}[NIKTO Agent] WARNING: No tool execution detected!{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}[NIKTO Agent] Attempting direct tool execution...{Style.RESET_ALL}")
+                print(
+                    f"{Fore.RED}[NIKTO Agent] WARNING: No tool execution detected!{Style.RESET_ALL}"
+                )
+                print(
+                    f"{Fore.YELLOW}[NIKTO Agent] Attempting direct tool execution...{Style.RESET_ALL}"
+                )
 
-                if "scan" in request.lower() or "web" in request.lower() or "http" in request.lower():
-                    url_pattern = r'https?://[^\s]+'
+                if (
+                    "scan" in request.lower()
+                    or "web" in request.lower()
+                    or "http" in request.lower()
+                ):
+                    url_pattern = r"https?://[^\s]+"
                     urls = re.findall(url_pattern, request)
                     if urls:
                         fallback_result = execute_nikto(f"nikto -h {urls[0]}")
@@ -154,14 +170,16 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
             else:
                 executed = True
                 print(f"{Fore.GREEN}[NIKTO Agent] Execution complete{Style.RESET_ALL}")
-                print(f"{Fore.CYAN}[NIKTO Agent] ========================================{Style.RESET_ALL}")
+                print(
+                    f"{Fore.CYAN}[NIKTO Agent] ========================================{Style.RESET_ALL}"
+                )
 
             return {
                 "success": True,
                 "result": content,
                 "request": request,
                 # "executed": "[DEBUG]" in content or "Direct execution" in content
-                "executed": executed
+                "executed": executed,
             }
 
         except Exception as e:
@@ -170,28 +188,26 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
                 "success": False,
                 "error": str(e),
                 "request": request,
-                "executed": False
+                "executed": False,
             }
 
     def parse_output(self, raw_output: str) -> Dict[str, Any]:
         """
         Parse raw Nikto output into structured format
-        
+
         Args:
             raw_output: Raw nikto scan output
-            
+
         Returns:
             Dictionary containing structured nikto results
         """
         try:
             parsing_llm = init_chat_model(
-                "gemini-2.0-flash-exp", 
-                model_provider="google_genai", 
-                temperature=0.1
+                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
             )
-            
+
             structured_llm = parsing_llm.with_structured_output(NiktoResult)
-            
+
             parsing_prompt = f"""Parse the following Nikto scan output into structured format.
 
 Extract:
@@ -212,12 +228,14 @@ Return a structured NiktoResult object."""
 
             result = structured_llm.invoke(parsing_prompt)
             result_dict = result if isinstance(result, dict) else result.model_dump()
-            
+
             num_vulns = len(result_dict.get("vulnerabilities", []))
-            print(f"{Fore.GREEN}[NIKTO Agent] Parsing complete - found {num_vulns} vulnerabilities{Style.RESET_ALL}")
-            
+            print(
+                f"{Fore.GREEN}[NIKTO Agent] Parsing complete - found {num_vulns} vulnerabilities{Style.RESET_ALL}"
+            )
+
             return result_dict
-            
+
         except Exception as e:
             print(f"{Fore.RED}[NIKTO Agent] Parse error: {str(e)}{Style.RESET_ALL}")
             return {
@@ -230,7 +248,7 @@ Return a structured NiktoResult object."""
                 "ssl_info": None,
                 "outdated_software": [],
                 "misconfigurations": [],
-                "scan_summary": "Failed to parse nikto output"
+                "scan_summary": "Failed to parse nikto output",
             }
 
     def get_capabilities(self) -> List[str]:
@@ -244,5 +262,5 @@ Return a structured NiktoResult object."""
             "Outdated software detection - actual fingerprinting",
             "Common web application vulnerabilities - real scanning",
             "Shows real command output with [DEBUG] logs",
-            "All scans are REAL, not simulated"
+            "All scans are REAL, not simulated",
         ]
