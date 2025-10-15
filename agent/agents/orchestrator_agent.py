@@ -930,7 +930,7 @@ Respond with ONLY the task description, nothing else."""
             )
 
             execution_history = []
-            max_iterations = 5
+            max_iterations = 50
 
             analysis = self._analyze_request(user_request)
 

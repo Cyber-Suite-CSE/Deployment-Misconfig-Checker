@@ -87,11 +87,22 @@ class MetasploitAgent:
                 raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
             self.llm = init_chat_model(
-                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
+                "gemini-2.0-flash-exp", model_provider="google_genai", temperature=0.1
             )
         else:
             self.llm = llm
 
+        # Initialize tools
+        self.tools = [
+            search_and_select_exploit,
+            execute_exploit,
+            check_sessions,
+        ]
+        print(f"{Fore.BLUE}[MetasploitAgent] Tools loaded: {[t.name for t in self.tools]}{Style.RESET_ALL}")
+
+        # Create agent executor using LangGraph
+        self.agent_executor = create_langgraph_agent(self.llm, self.tools)
+        
         print(f"{Fore.RED}[MetasploitAgent] EXPLOITATION MODE - Will execute real exploits{Style.RESET_ALL}")
 
     def process_request(self, user_request: str, vulnerability_data: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -117,54 +128,106 @@ class MetasploitAgent:
             print(f"{Fore.CYAN}[MetasploitAgent] Target: {target_ip}{Style.RESET_ALL}")
             print(f"{Fore.CYAN}[MetasploitAgent] Vulnerabilities: {vuln_info}{Style.RESET_ALL}")
 
-            # Step 1: Search for appropriate exploit
-            print(f"{Fore.YELLOW}[MetasploitAgent] Step 1: Searching for exploits...{Style.RESET_ALL}")
-            search_result = search_and_select_exploit(vuln_info)
+            # Build enhanced request with context
+            execution_request = f"""
+MANDATORY EXPLOITATION TASK:
+{user_request}
 
-            # Parse the selected exploit from result
-            exploit_module = self._parse_exploit_from_result(search_result)
+TARGET INFORMATION:
+- Target: {target_ip}
+- Vulnerabilities Found: {vuln_info}
 
-            if not exploit_module:
-                return {
-                    "success": False,
-                    "executed": False,
-                    "result": f"No exploit found for vulnerabilities: {vuln_info}\n{search_result}",
-                    "request": user_request,
-                }
+YOU MUST:
+1. Use search_and_select_exploit tool to find appropriate exploit module for: {vuln_info}
+2. Use execute_exploit tool to run the selected exploit against {target_ip}
+3. Use check_sessions tool to verify if exploitation was successful
+4. **IMPORTANT: If the exploitation fails (no sessions created), try a maximum of 2 more alternative exploits, then STOP and report failure. Do NOT retry the same exploit multiple times.**
 
-            # Step 2: Execute the exploit
-            print(f"{Fore.RED}[MetasploitAgent] Step 2: EXECUTING EXPLOIT: {exploit_module}{Style.RESET_ALL}")
-            exploit_result = execute_exploit(exploit_module, target_ip)
+CRITICAL: For WordPress targets, search for:
+- WordPress exploits (exploit/unix/webapp/wp_*)
+- WordPress plugin exploits
+- WordPress admin panel exploits
+- Generic web application exploits
 
-            # Step 3: Check for sessions
-            print(f"{Fore.YELLOW}[MetasploitAgent] Step 3: Checking for sessions...{Style.RESET_ALL}")
-            session_result = check_sessions()
+For Apache targets, search for:
+- Apache version-specific exploits
+- Apache module exploits
 
-            # Combine results
-            final_result = f"=== EXPLOITATION ATTEMPT ==="
-            final_result += f"\nTarget: {target_ip}"
-            final_result += f"\nVulnerabilities: {vuln_info}"
-            final_result += f"\n\n=== EXPLOIT SELECTION ==="
-            final_result += f"\n{search_result}"
-            final_result += f"\n\n=== EXPLOIT EXECUTION ==="
-            final_result += f"\n{exploit_result}"
-            final_result += f"\n\n=== SESSION STATUS ==="
-            final_result += f"\n{session_result}"
+EXECUTE THESE TOOLS IN ORDER NOW!
+"""
 
-            # Check if exploitation was successful
-            success = "EXPLOITATION SUCCESSFUL" in session_result or "Session" in session_result
+            print(f"{Fore.MAGENTA}[MetasploitAgent] Invoking agent executor with tools...{Style.RESET_ALL}")
 
-            print(f"{Fore.GREEN if success else Fore.RED}[MetasploitAgent] Exploitation {'SUCCESSFUL' if success else 'FAILED'}{Style.RESET_ALL}")
+            messages = [
+                (
+                    "system",
+                    METASPLOIT_AGENT_PROMPT.format(
+                        tool_names=", ".join([t.name for t in self.tools]),
+                        tools="\n".join([f"{t.name}: {t.description}" for t in self.tools]),
+                        input="",
+                        agent_scratchpad="",
+                    ),
+                ),
+                ("human", execution_request),
+            ]
+
+            response = self.agent_executor.invoke(
+                {"messages": messages},
+                config={"recursion_limit": 50}
+            )
+
+            # Extract content from response and check for tool calls
+            tool_calls_detected = False
+            content = ""
+            
+            if isinstance(response, dict) and "messages" in response:
+                # Check all messages for tool calls
+                for msg in response["messages"]:
+                    # Check if message has tool_calls attribute (ToolMessage or AIMessage with tool_calls)
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        tool_calls_detected = True
+                        print(f"{Fore.GREEN}[MetasploitAgent] Tool calls detected: {len(msg.tool_calls)}{Style.RESET_ALL}")
+                    
+                    # Check if it's a ToolMessage (response from a tool)
+                    if hasattr(msg, "type") and msg.type == "tool":
+                        tool_calls_detected = True
+                        print(f"{Fore.GREEN}[MetasploitAgent] Tool execution confirmed{Style.RESET_ALL}")
+                
+                # Get final content
+                final_message = response["messages"][-1]
+                content = (
+                    final_message.content
+                    if hasattr(final_message, "content")
+                    else str(final_message)
+                )
+                
+                # Also concatenate all message content for full context
+                full_content = "\n".join([
+                    str(msg.content) if hasattr(msg, "content") else str(msg)
+                    for msg in response["messages"]
+                ])
+            else:
+                content = str(response)
+                full_content = content
+
+            # Verify execution - check both tool calls and content markers
+            execution_detected = tool_calls_detected or self._verify_execution(full_content)
+
+            if not execution_detected:
+                print(f"{Fore.RED}[MetasploitAgent] WARNING: No tool execution detected in agent response!{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}[MetasploitAgent] ✓ Tool execution verified{Style.RESET_ALL}")
+
+            print(f"{Fore.GREEN}[MetasploitAgent] Agent execution complete{Style.RESET_ALL}")
             print(f"{Fore.RED}[MetasploitAgent] ========================================{Style.RESET_ALL}")
 
             # Create structured result
-            structured_result = self._parse_to_structured_result(final_result, user_request)
+            structured_result = self._parse_to_structured_result(content, user_request)
 
             return {
                 "success": True,
-                "executed": True,
-                "exploitation_successful": success,
-                "result": final_result,
+                "executed": execution_detected,
+                "result": content,
                 "request": user_request,
                 "structured_result": structured_result,
             }
@@ -172,6 +235,8 @@ class MetasploitAgent:
         except Exception as e:
             error_msg = f"Error in MetasploitAgent: {str(e)}"
             print(f"{Fore.RED}[MetasploitAgent] {error_msg}{Style.RESET_ALL}")
+            import traceback
+            print(f"{Fore.RED}[MetasploitAgent] Traceback: {traceback.format_exc()}{Style.RESET_ALL}")
             return {
                 "success": False,
                 "error": error_msg,
@@ -268,16 +333,33 @@ class MetasploitAgent:
     def _verify_execution(self, response: str) -> bool:
         """Verify if actual Metasploit commands were executed"""
         execution_markers = [
+            # Tool output markers
             "[DEBUG]",
+            "EXECUTING EXPLOIT:",
+            "EXPLOIT FOUND",
+            "NO METASPLOIT EXPLOIT AVAILABLE",
+            "Selected Exploit:",
+            "Selected exploit:",
+            "Exploit execution result:",
+            "No active sessions",
+            "Active sessions:",
+            "EXPLOITATION SUCCESSFUL",
+            
+            # Metasploit output markers
+            "[+]",
+            "[*]",
+            "[-]",
+            "msf",
+            "meterpreter",
+            "Session",
+            
+            # Other execution indicators
             "Executing exploit:",
             "Running auxiliary module:",
             "Generating payload:",
-            "Active sessions:",
             "Post module output:",
-            "[+]",
-            "[*]",
-            "msf",
-            "meterpreter",
+            "Error executing exploit:",
+            "Error searching exploits:",
         ]
         return any(marker in response for marker in execution_markers)
 
