@@ -54,7 +54,9 @@ class NmapAgent:
 
     def __init__(self, llm=None):
         """Initialize the NMAP execution agent"""
-        print(f"{Fore.GREEN}[NMAP Agent] Initializing NMAP Execution Agent{Style.RESET_ALL}")
+        print(
+            f"{Fore.GREEN}[NMAP Agent] Initializing NMAP Execution Agent{Style.RESET_ALL}"
+        )
 
         if llm is None:
             # Initialize Google Gemini LLM
@@ -63,7 +65,7 @@ class NmapAgent:
                 raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
             self.llm = init_chat_model(
-                "gemini-2.0-flash-exp", model_provider="google_genai", temperature=0.1
+                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
             )
         else:
             self.llm = llm
@@ -87,7 +89,9 @@ class NmapAgent:
         """
         print(f"{Fore.CYAN}[NMAP Agent] ========================================")
         print(f"{Fore.YELLOW}[NMAP Agent] Processing request: {Fore.WHITE}{request}")
-        print(f"{Fore.CYAN}[NMAP Agent] ========================================{Style.RESET_ALL}")
+        print(
+            f"{Fore.CYAN}[NMAP Agent] ========================================{Style.RESET_ALL}"
+        )
 
         try:
             # Create an execution-focused request
@@ -108,7 +112,9 @@ If this is about nmap help, EXECUTE 'nmap --help'.
 EXECUTE THE COMMAND NOW using execute_nmap tool!
 """
 
-            print(f"{Fore.MAGENTA}[NMAP Agent] Forcing tool execution...{Style.RESET_ALL}")
+            print(
+                f"{Fore.MAGENTA}[NMAP Agent] Forcing tool execution...{Style.RESET_ALL}"
+            )
 
             # Create the messages with strong execution focus
             messages = [
@@ -125,7 +131,9 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
             ]
 
             # Execute the agent
-            print(f"{Fore.YELLOW}[NMAP Agent] Invoking agent executor...{Style.RESET_ALL}")
+            print(
+                f"{Fore.YELLOW}[NMAP Agent] Invoking agent executor...{Style.RESET_ALL}"
+            )
             response = self.agent_executor.invoke({"messages": messages})
 
             # Extract the response
@@ -142,8 +150,12 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
             # Verify execution happened
             if "[DEBUG]" not in content and "execute_nmap" not in str(response):
                 executed = False
-                print(f"{Fore.RED}[NMAP Agent] WARNING: No tool execution detected!{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}[NMAP Agent] Attempting direct tool execution...{Style.RESET_ALL}")
+                print(
+                    f"{Fore.RED}[NMAP Agent] WARNING: No tool execution detected!{Style.RESET_ALL}"
+                )
+                print(
+                    f"{Fore.YELLOW}[NMAP Agent] Attempting direct tool execution...{Style.RESET_ALL}"
+                )
 
                 # Try direct tool execution as fallback
                 if "scan" in request.lower() or "port" in request.lower():
@@ -153,7 +165,7 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                         fallback_result = execute_nmap("nmap --help")
                     else:
                         # Extract IP if present
-                        ip_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
+                        ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
                         ips = re.findall(ip_pattern, request)
                         if ips:
                             fallback_result = execute_nmap(f"nmap {ips[0]}")
@@ -165,14 +177,16 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 executed = True
 
             print(f"{Fore.GREEN}[NMAP Agent] Execution complete{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}[NMAP Agent] ========================================{Style.RESET_ALL}")
+            print(
+                f"{Fore.CYAN}[NMAP Agent] ========================================{Style.RESET_ALL}"
+            )
 
             return {
                 "success": True,
                 "result": content,
                 "request": request,
                 # "executed": "[DEBUG]" in content or "Direct execution" in content
-                "executed": executed
+                "executed": executed,
             }
 
         except Exception as e:
@@ -181,7 +195,7 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 "success": False,
                 "error": str(e),
                 "request": request,
-                "executed": False
+                "executed": False,
             }
 
     def parse_output(self, raw_output: str) -> Dict[str, Any]:
@@ -194,11 +208,13 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
         Returns:
             Dictionary with structured, parsed data
         """
-        print(f"{Fore.CYAN}[NMAP Agent] Parsing output into structured format...{Style.RESET_ALL}")
-        
+        print(
+            f"{Fore.CYAN}[NMAP Agent] Parsing output into structured format...{Style.RESET_ALL}"
+        )
+
         try:
             parser_llm = self.llm.with_structured_output(NmapResult)
-            
+
             parse_prompt = f"""Parse this nmap scan output into structured format.
 
 Raw nmap output:
@@ -219,14 +235,20 @@ Be accurate and only include information that is actually present in the output.
 If a field has no data, use the default empty value."""
 
             structured_result = parser_llm.invoke(parse_prompt)
-            
-            result_dict = structured_result if isinstance(structured_result, dict) else structured_result.model_dump()
-            
+
+            result_dict = (
+                structured_result
+                if isinstance(structured_result, dict)
+                else structured_result.model_dump()
+            )
+
             num_ports = len(result_dict.get("open_ports", []))
-            print(f"{Fore.GREEN}[NMAP Agent] Parsing complete - found {num_ports} open ports{Style.RESET_ALL}")
-            
+            print(
+                f"{Fore.GREEN}[NMAP Agent] Parsing complete - found {num_ports} open ports{Style.RESET_ALL}"
+            )
+
             return result_dict
-            
+
         except Exception as e:
             print(f"{Fore.RED}[NMAP Agent] Parsing error: {str(e)}{Style.RESET_ALL}")
             return {
@@ -238,7 +260,7 @@ If a field has no data, use the default empty value."""
                 "os_detection": None,
                 "vulnerabilities": [],
                 "host_up": True,
-                "scan_summary": f"Failed to parse nmap output: {str(e)}"
+                "scan_summary": f"Failed to parse nmap output: {str(e)}",
             }
 
     def get_capabilities(self) -> List[str]:
@@ -251,5 +273,5 @@ If a field has no data, use the default empty value."""
             "Network discovery - real network sweeps",
             "Vulnerability scanning with NSE scripts - actual execution",
             "Shows real command output with [DEBUG] logs",
-            "All scans are REAL, not simulated"
+            "All scans are REAL, not simulated",
         ]

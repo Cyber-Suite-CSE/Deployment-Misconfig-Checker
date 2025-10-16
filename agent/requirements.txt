@@ -5,3 +5,4 @@ langgraph==0.2.61
 python-dotenv==1.0.1
 pydantic==2.10.4
 colorama==0.4.6
+pymetasploit3>=1.0.6

@@ -70,3 +70,51 @@ class NiktoResult(BaseModel):
     outdated_software: List[str] = Field(default_factory=list, description="Outdated software detected")
     misconfigurations: List[str] = Field(default_factory=list, description="Server misconfigurations")
     scan_summary: str = Field(description="Brief summary of scan results")
+
+
+class ExploitInfo(BaseModel):
+    """Information about a Metasploit exploit module"""
+    name: str = Field(description="Exploit module name/path")
+    description: Optional[str] = Field(default=None, description="Exploit description")
+    rank: Optional[str] = Field(default=None, description="Exploit ranking (excellent, great, good, normal, etc)")
+    targets: List[str] = Field(default_factory=list, description="Available targets for the exploit")
+
+
+class PayloadInfo(BaseModel):
+    """Information about a Metasploit payload"""
+    name: str = Field(description="Payload name/path")
+    platform: Optional[str] = Field(default=None, description="Target platform (windows, linux, etc)")
+    arch: Optional[str] = Field(default=None, description="Architecture (x86, x64, etc)")
+    description: Optional[str] = Field(default=None, description="Payload description")
+
+
+class SessionInfo(BaseModel):
+    """Information about an active Metasploit session"""
+    session_id: str = Field(description="Session ID")
+    session_type: str = Field(description="Session type (meterpreter, shell, etc)")
+    target: str = Field(description="Target host/IP")
+    info: Optional[str] = Field(default=None, description="Additional session information")
+    via_exploit: Optional[str] = Field(default=None, description="Exploit used to obtain session")
+
+
+class ModuleResult(BaseModel):
+    """Result from running a Metasploit module"""
+    module_type: str = Field(description="Module type (exploit, auxiliary, post)")
+    module_name: str = Field(description="Module path/name")
+    success: bool = Field(description="Whether the module executed successfully")
+    output: str = Field(description="Module execution output")
+    session_created: Optional[str] = Field(default=None, description="Session ID if created")
+
+
+class MetasploitResult(BaseModel):
+    """Structured Metasploit operation results"""
+    request: str = Field(description="Original request/operation")
+    exploits_found: List[ExploitInfo] = Field(default_factory=list, description="List of discovered exploits")
+    payloads_available: List[PayloadInfo] = Field(default_factory=list, description="Available payloads")
+    sessions_active: List[SessionInfo] = Field(default_factory=list, description="Active sessions")
+    exploitation_attempted: bool = Field(default=False, description="Whether exploitation was attempted")
+    payload_generated: bool = Field(default=False, description="Whether a payload was generated")
+    post_exploitation_performed: bool = Field(default=False, description="Whether post-exploitation was performed")
+    module_results: List[ModuleResult] = Field(default_factory=list, description="Results from module executions")
+    vulnerabilities_exploited: List[str] = Field(default_factory=list, description="Successfully exploited vulnerabilities")
+    scan_summary: str = Field(description="Brief summary of Metasploit operations")
