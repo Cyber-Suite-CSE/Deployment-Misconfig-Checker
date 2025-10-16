@@ -927,7 +927,7 @@ Respond with ONLY the task description, nothing else."""
             )
 
             execution_history = []
-            max_iterations = 5
+            max_iterations = 50
 
             analysis = self._analyze_request(user_request)
 
@@ -987,7 +987,7 @@ Respond with ONLY the task description, nothing else."""
                 next_steps = self._analyze_next_steps(user_request, execution_history)
 
                 print(
-                    f"{Fore.MAGENTA}[Orchestrator] Analysis: {next_steps.get('analysis', '')[:200]}...{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA}[Orchestrator] Analysis: {next_steps.get('analysis', '')}{Style.RESET_ALL}"
                 )
 
                 if next_steps["done"] or next_steps["next_agent"] == "none":

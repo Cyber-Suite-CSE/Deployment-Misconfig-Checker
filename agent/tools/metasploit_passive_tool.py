@@ -43,79 +43,62 @@ def list_available_exploits(vulnerability_keywords: str, max_results: int = 10) 
         client = get_msf_client()
         
         print(f"{Fore.CYAN}[DEBUG] Searching for exploits matching: {vulnerability_keywords}{Style.RESET_ALL}")
-        
-        vulnerability_map = {
-            "ms17-010": ["exploit/windows/smb/ms17_010_eternalblue", "exploit/windows/smb/ms17_010_psexec"],
-            "eternalblue": ["exploit/windows/smb/ms17_010_eternalblue"],
-            "social warfare": ["exploit/unix/webapp/wp_social_warfare_rce"],
-            "social_warfare": ["exploit/unix/webapp/wp_social_warfare_rce"],
-            "wordpress": ["exploit/unix/webapp/wp_social_warfare_rce", "exploit/unix/webapp/wp_admin_shell_upload", "auxiliary/scanner/http/wordpress_xmlrpc_login"],
-            "xmlrpc": ["auxiliary/scanner/http/wordpress_xmlrpc_login"],
-            "apache struts": ["exploit/multi/http/struts2_content_type_ognl", "exploit/multi/http/struts_code_exec_classloader"],
-            "drupal": ["exploit/unix/webapp/drupal_drupalgeddon2"],
-            "heartbleed": ["auxiliary/scanner/ssl/openssl_heartbleed"],
-            "shellshock": ["exploit/multi/http/apache_mod_cgi_bash_env_exec"],
-            "tomcat": ["exploit/multi/http/tomcat_mgr_deploy", "exploit/multi/http/tomcat_mgr_upload"],
-            "jenkins": ["exploit/multi/http/jenkins_script_console"],
-            "ssh": ["auxiliary/scanner/ssh/ssh_login", "exploit/linux/ssh/sshexec"],
-            "ftp": ["exploit/unix/ftp/vsftpd_234_backdoor"],
-            "smb": ["exploit/windows/smb/ms17_010_eternalblue", "exploit/windows/smb/ms08_067_netapi"],
-        }
-        
-        keywords_lower = vulnerability_keywords.lower()
-        matched_exploits = []
-        
-        for vuln_key, exploit_list in vulnerability_map.items():
-            if vuln_key in keywords_lower:
-                matched_exploits.extend(exploit_list)
-        
-        if not matched_exploits:
-            search_terms = keywords_lower.split()
-            all_exploits = client.modules.exploits
-            
-            for term in search_terms:
-                if len(term) > 2:
-                    matched_exploits.extend([e for e in all_exploits if term in e.lower()])
-        
-        matched_exploits = list(set(matched_exploits))[:max_results]
-        
-        if not matched_exploits:
-            return f"No exploits found for: {vulnerability_keywords}\n\nTry searching with different keywords or check if the service/vulnerability is in the Metasploit database."
-        
-        result = f"Found {len(matched_exploits)} potential exploit(s) for: {vulnerability_keywords}\n\n"
-        
-        for idx, exploit_path in enumerate(matched_exploits, 1):
-            result += f"{idx}. {exploit_path}\n"
-            
+        print("KEYWORD LIST", vulnerability_keywords)
+        # Query the Metasploit search API so behaviour mirrors `search <keywords>` in msfconsole
+        search_results = client.modules.search(vulnerability_keywords) or []
+
+        # Keep only exploit modules and respect the limit
+        exploit_results = [
+            module for module in search_results
+            if module.get("type", "").lower() == "exploit" and module.get("fullname")
+        ][:max_results]
+
+        if not exploit_results:
+            return (
+                f"No exploits found for: {vulnerability_keywords}\n\n"
+                "Try refining the keywords (include product names, versions, or CVE IDs) "
+                "or verify the module exists in the Metasploit database."
+            )
+
+        result_lines = [
+            f"Found {len(exploit_results)} potential exploit(s) for: {vulnerability_keywords}\n"
+        ]
+
+        for idx, module in enumerate(exploit_results, 1):
+            exploit_path = module["fullname"]
+            result_lines.append(f"{idx}. {exploit_path}")
+
             try:
-                module_info = client.modules.use('exploit', exploit_path)
-                
+                module_info = client.modules.use(module.get("type", "exploit"), exploit_path)
+
                 description = module_info.get('description', 'No description available')
                 if len(description) > 200:
                     description = description[:200] + "..."
-                result += f"   Description: {description}\n"
-                
+                result_lines.append(f"   Description: {description}")
+
                 rank = module_info.get('rank', 'normal')
-                result += f"   Rank: {rank}\n"
-                
+                result_lines.append(f"   Rank: {rank}")
+
                 options = module_info.get('options', {})
                 required_opts = [opt for opt, details in options.items() if details.get('required') and details.get('default') is None]
-                
+
                 if required_opts:
-                    result += f"   Required Options: {', '.join(required_opts)}\n"
-                
+                    result_lines.append(f"   Required Options: {', '.join(required_opts)}")
+
                 targets = module_info.get('targets', [])
                 if targets and len(targets) > 0:
-                    result += f"   Available Targets: {len(targets)}\n"
-                
+                    result_lines.append(f"   Available Targets: {len(targets)}")
+
             except Exception as e:
-                result += f"   (Unable to fetch details: {str(e)})\n"
-            
-            result += "\n"
-        
-        result += f"\n{Fore.YELLOW}NOTE: These are reconnaissance results only. No exploits have been executed.{Style.RESET_ALL}"
-        
-        return result
+                result_lines.append(f"   (Unable to fetch details: {str(e)})")
+
+            result_lines.append("")
+
+        result_lines.append(
+            f"{Fore.YELLOW}NOTE: These are reconnaissance results only. No exploits have been executed.{Style.RESET_ALL}"
+        )
+
+        return "\n".join(result_lines)
         
     except Exception as e:
         return f"Error searching exploits: {str(e)}"
