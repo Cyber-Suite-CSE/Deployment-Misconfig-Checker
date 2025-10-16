@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 from typing import Dict, Any, List, Optional
 from langchain_core.tools import tool
 from pymetasploit3.msfrpc import MsfRpcClient
@@ -43,11 +44,13 @@ def list_available_exploits(vulnerability_keywords: str, max_results: int = 10) 
         client = get_msf_client()
         
         print(f"{Fore.CYAN}[DEBUG] Searching for exploits matching: {vulnerability_keywords}{Style.RESET_ALL}")
-        print("KEYWORD LIST", vulnerability_keywords)
-        # Query the Metasploit search API so behaviour mirrors `search <keywords>` in msfconsole
+        print(f"KEYWORD LIST: {vulnerability_keywords}\n")
         search_results = client.modules.search(vulnerability_keywords) or []
 
-        # Keep only exploit modules and respect the limit
+        print(f"{Fore.MAGENTA}[DEBUG] Raw modules.search() output:{Style.RESET_ALL}")
+        print(json.dumps(search_results[:3], indent=2, default=str))
+        print(f"{Fore.MAGENTA}[DEBUG] Total results: {len(search_results)}{Style.RESET_ALL}\n")
+
         exploit_results = [
             module for module in search_results
             if module.get("type", "").lower() == "exploit" and module.get("fullname")
@@ -192,7 +195,7 @@ def search_exploits_by_cve(cve_id: str) -> str:
         if not cve_id.upper().startswith('CVE-'):
             cve_id = f"CVE-{cve_id}"
         
-        print(f"{Fore.CYAN}[DEBUG] Searching for exploits targeting: {cve_id}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}[DEBUG] Searching for exploits targeting: {cve_id}{Style.RESET_ALL}\n")
         
         all_exploits = client.modules.exploits
         matched_exploits = []
