@@ -183,6 +183,32 @@ def execute_wpscan(command: str, safe_mode: bool = True) -> str:
         print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
         return f"Error: {error_msg}"
 
+    lower_command = command.lower()
+    is_scan_command = (
+        "--help" not in lower_command
+        and "--version" not in lower_command
+        and "--update" not in lower_command
+        and "--list" not in lower_command
+    )
+
+    if is_scan_command and "--url" in lower_command:
+        if "--enumerate" not in lower_command:
+            command += " --enumerate ap,at,u"
+            print(f"{Fore.YELLOW}[DEBUG] Added default enumeration flags (--enumerate ap,at,u){Style.RESET_ALL}")
+        if "--plugins-detection" not in lower_command:
+            command += " --plugins-detection aggressive"
+            print(f"{Fore.YELLOW}[DEBUG] Added aggressive plugin detection flag{Style.RESET_ALL}")
+        if "--random-user-agent" not in lower_command:
+            command += " --random-user-agent"
+            print(f"{Fore.YELLOW}[DEBUG] Added random user agent flag{Style.RESET_ALL}")
+        if "--api-token" not in lower_command:
+            api_token = os.getenv("WPSCAN_API_TOKEN")
+            if api_token:
+                command += f" --api-token {api_token}"
+                print(f"{Fore.YELLOW}[DEBUG] Injected WPScan API token from environment{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}[DEBUG] No WPSCAN_API_TOKEN found in environment{Style.RESET_ALL}")
+
     actual_command = command
 
     try:

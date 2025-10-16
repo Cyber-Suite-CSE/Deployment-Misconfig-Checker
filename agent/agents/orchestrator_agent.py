@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -7,7 +7,7 @@ from colorama import init, Fore, Style
 from agents.nmap_agent import NmapAgent
 from agents.wpscan_agent import WpscanAgent
 from agents.nikto_agent import NiktoAgent
-from agents.metasploit_agent import MetasploitAgent
+from agents.metasploit_passive_agent import MetasploitPassiveAgent
 
 init(autoreset=True)
 
@@ -43,7 +43,7 @@ Currently available tool agents:
 - NMAP Agent: Specializes in network scanning, port discovery, service detection, OS fingerprinting, vulnerability detection
 - WPScan Agent: Specializes in WordPress vulnerability scanning, plugin/theme enumeration, user discovery
 - Nikto Agent: Specializes in web server vulnerability scanning, CGI testing, SSL/TLS configuration, server misconfiguration detection
-- Metasploit Agent: Specializes in exploitation, payload generation, post-exploitation, session management, privilege escalation
+- Metasploit Agent: Specializes in exploit reconnaissance (passive), finding potential exploits, analyzing vulnerability details, no actual exploitation
 
 Your responsibilities:
 1. ANALYZE the user's request to understand their intent
@@ -62,8 +62,8 @@ Guidelines:
 - For network scanning requests → NMAP Agent (ALWAYS start here for recon)
 - For WordPress security testing → WPScan Agent (after identifying WordPress)
 - For web server vulnerability scanning → Nikto Agent (after finding web servers)
-- For exploitation → Metasploit Agent (ONLY after vulnerabilities are found)
-- For payload generation → Metasploit Agent (when specifically requested or after finding exploitable services)
+- For exploitation → Metasploit Agent (ONLY after vulnerabilities are found) - PASSIVE MODE ONLY - provides exploit reconnaissance
+- For payload generation → Metasploit Agent (when specifically requested or after finding exploitable services) - PASSIVE MODE ONLY - shows available exploits
 - For post-exploitation tasks → Metasploit Agent (only after successful exploitation)
 - If a request needs multiple tools, break it down into sequential steps
 - Always provide context about what you're doing
@@ -98,7 +98,7 @@ class OrchestratorAgent:
             "nmap": NmapAgent(llm=self.llm),
             "wpscan": WpscanAgent(llm=self.llm),
             "nikto": NiktoAgent(llm=self.llm),
-            "metasploit": MetasploitAgent(llm=self.llm),
+            "metasploit": MetasploitPassiveAgent(llm=self.llm),
         }
 
         self.tool_capabilities = {
@@ -127,16 +127,13 @@ class OrchestratorAgent:
                 "common web application vulnerabilities",
             ],
             "metasploit": [
-                "exploitation",
-                "vulnerability exploitation",
-                "payload generation",
-                "post-exploitation",
-                "session management",
-                "privilege escalation",
-                "penetration testing",
-                "exploit development",
-                "meterpreter sessions",
-                "auxiliary modules",
+                "exploit reconnaissance",
+                "vulnerability analysis",
+                "exploit database search",
+                "exploit information gathering",
+                "CVE to exploit mapping",
+                "passive security assessment",
+                "exploit availability checking",
             ],
         }
 
@@ -321,7 +318,7 @@ TASKS:
         response = self.llm.invoke(messages)
         return {"analysis": response.content, "original_request": user_request}
 
-    def _route_to_agent(self, agent_name: str, task: str, vulnerability_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def _route_to_agent(self, agent_name: str, task: str, vulnerability_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Route a specific task to the appropriate agent
 
