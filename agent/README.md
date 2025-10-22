@@ -52,12 +52,24 @@ GOOGLE_API_KEY=your_actual_api_key_here
 
 ## Usage
 
+### Command-Line Workflow
+
 Run the system:
 
 ```bash
 msfrpcd -P yourpassword -p 55553
 python main.py
 ```
+
+### HTTP API (SSE)
+
+A FastAPI backend is available in `agent/api`. Launch with:
+
+```bash
+uvicorn agent.api.main:app --host 0.0.0.0 --port 8000
+```
+
+See `docs/API_BACKEND.md` for streaming event format and integration details.
 
 ### Example Commands
 
