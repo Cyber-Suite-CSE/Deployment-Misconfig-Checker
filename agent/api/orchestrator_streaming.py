@@ -42,7 +42,7 @@ class EventPublisher:
             payload=payload,
             metadata=self.metadata,
         )
-        frame = f"data: {event.model_dump_json()}\n\n"
+        frame = event.model_dump_json()
         self.queue.put_nowait(frame)
 
     def log(self, line: str) -> None:

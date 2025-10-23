@@ -12,6 +12,7 @@ if __package__ is None or __name__ == "__main__":
 
 from dotenv import load_dotenv  # noqa: E402
 from fastapi import FastAPI, HTTPException, Request, status  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 import uvicorn  # noqa: E402
@@ -26,6 +27,14 @@ app = FastAPI(
     title="Agent Workflow API",
     description="Serve the multi-agent cybersecurity workflow over SSE.",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in os.getenv("AGENT_API_ALLOWED_ORIGINS", "*").split(",") if origin.strip()],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -44,12 +53,12 @@ async def healthcheck() -> JSONResponse:
 @app.post(
     "/workflows/run",
     summary="Kick off an agentic workflow and stream progress via SSE",
-    status_code=status.HTTP_202_ACCEPTED,
 )
 async def run_workflow_endpoint(payload: WorkflowRequest, request: Request) -> EventSourceResponse:
     """
     Start the orchestrator workflow for a given prompt and stream Server-Sent Events.
     """
+    print(f"[API] Received workflow request: {payload.prompt[:80]!r}")
     if not os.getenv("GOOGLE_API_KEY"):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
