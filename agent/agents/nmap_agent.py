@@ -59,13 +59,23 @@ class NmapAgent:
         )
 
         if llm is None:
-            # Initialize Google Gemini LLM
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY not found in environment variables")
+            llm_provider = os.getenv("LLM_PROVIDER", "openai")
+
+            if llm_provider == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY not found in environment variables")
+                model_name = "gpt-4o-mini"
+            elif llm_provider == "google_genai":
+                api_key = os.getenv("GOOGLE_API_KEY")
+                if not api_key:
+                    raise ValueError("GOOGLE_API_KEY not found in environment variables")
+                model_name = "gemini-2.5-flash"
+            else:
+                raise ValueError(f"Invalid LLM_PROVIDER: {llm_provider}. Must be 'openai' or 'google_genai'")
 
             self.llm = init_chat_model(
-                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
+                model_name, model_provider=llm_provider, temperature=0.1
             )
         else:
             self.llm = llm

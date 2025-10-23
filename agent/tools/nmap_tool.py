@@ -168,7 +168,7 @@ def execute_nmap(command: str, safe_mode: bool = True) -> str:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=120,  # 120 second timeout
+            timeout=300,  # 120 second timeout
             check=False
         )
 

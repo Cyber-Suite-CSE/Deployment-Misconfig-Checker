@@ -40,10 +40,10 @@ Execution request indicators:
 - Contains specific IPs, URLs, or targets
 
 Currently available tool agents:
-- NMAP Agent: Specializes in network scanning, port discovery, service detection, OS fingerprinting, vulnerability detection
-- WPScan Agent: Specializes in WordPress vulnerability scanning, plugin/theme enumeration, user discovery
-- Nikto Agent: Specializes in web server vulnerability scanning, CGI testing, SSL/TLS configuration, server misconfiguration detection
-- Metasploit Agent: Specializes in exploit reconnaissance (passive), finding potential exploits, analyzing vulnerability details, no actual exploitation
+- nmap: Specializes in network scanning, port discovery, service detection, OS fingerprinting, vulnerability detection
+- wpscan: Specializes in WordPress vulnerability scanning, plugin/theme enumeration, user discovery
+- nikto: Specializes in web server vulnerability scanning, CGI testing, SSL/TLS configuration, server misconfiguration detection
+- metasploit: Specializes in exploit reconnaissance (PASSIVE MODE ONLY - NO EXECUTION), finding potential exploits in Metasploit database, analyzing vulnerability details, CVE-to-exploit mapping. NEVER executes exploits.
 
 Your responsibilities:
 1. ANALYZE the user's request to understand their intent
@@ -53,18 +53,25 @@ Your responsibilities:
 5. SYNTHESIZE results from tool agents into a coherent response
 
 CRITICAL WORKFLOW RULES FOR METASPLOIT:
-- Metasploit is a SECONDARY agent that requires vulnerability data from scanning tools
-- NEVER use Metasploit as the initial/first agent
-- Metasploit should ONLY be called AFTER vulnerabilities All the Scanning tools are done collecting vulnerabilitites.
-- The proper workflow is ALWAYS: Scan → Identify Vulnerabilities → Then Exploit
+- metasploit is a SECONDARY agent that requires vulnerability data from scanning tools
+- NEVER use metasploit as the initial/first agent
+- metasploit should ONLY be called AFTER ALL scanning tools complete AND vulnerabilities are found
+- The proper workflow is ALWAYS: Scan → Identify Vulnerabilities → Search Exploits (ONCE) → DONE
+
+METASPLOIT AGENT WORKFLOW RULES:
+- metasploit agent is RECONNAISSANCE/DATABASE SEARCH ONLY
+- It CANNOT and WILL NOT execute exploits
+- Use metasploit ONLY ONCE per workflow after scanning completes
+- If metasploit already ran, do NOT suggest it again
+- Workflow order: Scan (nmap/wpscan/nikto) → Find Vulnerabilities → Search Exploits (metasploit) → DONE
 
 Guidelines:
-- For network scanning requests → NMAP Agent (ALWAYS start here for recon)
-- For WordPress security testing → WPScan Agent (after identifying WordPress)
-- For web server vulnerability scanning → Nikto Agent (after finding web servers)
-- For exploitation → Metasploit Agent (ONLY after vulnerabilities are found) - PASSIVE MODE ONLY - provides exploit reconnaissance
-- For payload generation → Metasploit Agent (when specifically requested or after finding exploitable services) - PASSIVE MODE ONLY - shows available exploits
-- For post-exploitation tasks → Metasploit Agent (only after successful exploitation)
+- For network scanning requests → nmap (ALWAYS start here for recon)
+- For WordPress security testing → wpscan (after identifying WordPress)
+- For web server vulnerability scanning → nikto (after finding web servers)
+- For exploit SEARCH (not execution) → metasploit (ONLY after ALL scanning agents complete AND vulnerabilities found) - PASSIVE RECONNAISSANCE ONLY - searches Metasploit database, returns exploit information, NEVER executes
+- For payload generation requests → Explain that metasploit agent only searches database, cannot generate payloads
+- For actual exploitation requests → Explain that this system only does passive reconnaissance, manual Metasploit Framework required for execution
 - If a request needs multiple tools, break it down into sequential steps
 - Always provide context about what you're doing
 - Explain results in a user-friendly manner
@@ -84,13 +91,23 @@ class OrchestratorAgent:
 
     def __init__(self):
         """Initialize the orchestrator with LLM and tool agents"""
-        # Initialize Google Gemini LLM
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+        llm_provider = os.getenv("LLM_PROVIDER", "openai")
+
+        if llm_provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY not found in environment variables")
+            model_name = "gpt-4o-mini"
+        elif llm_provider == "google_genai":
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY not found in environment variables")
+            model_name = "gemini-2.5-flash"
+        else:
+            raise ValueError(f"Invalid LLM_PROVIDER: {llm_provider}. Must be 'openai' or 'google_genai'")
 
         self.llm = init_chat_model(
-            "gemini-2.5-flash", model_provider="google_genai", temperature=0.3
+            model_name, model_provider=llm_provider, temperature=0.3
         )
 
         # Initialize tool agents
@@ -128,12 +145,12 @@ class OrchestratorAgent:
             ],
             "metasploit": [
                 "exploit reconnaissance",
-                "vulnerability analysis",
+                # "vulnerability analysis",
                 "exploit database search",
                 "exploit information gathering",
                 "CVE to exploit mapping",
                 "passive security assessment",
-                "exploit availability checking",
+                # "exploit availability checking",
             ],
         }
 
@@ -267,7 +284,7 @@ Available tools and their capabilities:
 - NMAP: Network scanning, port discovery, service detection, OS fingerprinting
 - WPScan: WordPress vulnerability scanning, plugin/theme/user enumeration
 - Nikto: Web server vulnerability scanning, SSL/TLS testing, misconfiguration detection
-- Metasploit: Exploitation, payload generation, post-exploitation, session management
+- Metasploit: Passive Reconnaissance, exploit database search, CVE to exploit mapping
 
 Be helpful and informative. Explain what the system can do and how to use it.
 If they're asking about a specific tool, explain its capabilities in detail.
@@ -617,6 +634,9 @@ TASKS:
         # Check if vulnerabilities have been found
         vuln_check = self._check_vulnerabilities_found(execution_history)
 
+        # Check if metasploit already ran (TASK 2)
+        metasploit_already_ran = any(exec["agent"] == "metasploit" for exec in execution_history)
+
         history_summary = ""
         for exec in execution_history:
             history_summary += f"\n--- Agent: {exec['agent']} ---\n"
@@ -639,6 +659,10 @@ NO VULNERABILITIES DETECTED YET:
 - No exploitable vulnerabilities have been identified
 - Metasploit should NOT be suggested unless more scanning finds vulnerabilities
 - Consider additional scanning with different tools or options"""
+        
+        # Add metasploit execution status to context (TASK 2)
+        if metasploit_already_ran:
+            vulnerability_context += "\n\n⚠️ METASPLOIT ALREADY RAN - DO NOT SUGGEST AGAIN. Metasploit runs ONLY ONCE per workflow."
 
         analysis_prompt = f"""Analyze the execution results and determine next steps.
 
@@ -649,27 +673,30 @@ Execution history:
 
 {vulnerability_context}
 
-Available agents:
+Available agents (use EXACT names below):
 - nmap: Network scanning, port discovery, service detection, OS fingerprinting
 - wpscan: WordPress vulnerability scanning, plugin/theme/user enumeration
 - nikto: Web server vulnerability scanning, CGI testing, SSL/TLS configuration
-- metasploit: Exploitation (ONLY use if vulnerabilities were found above)
+- metasploit: Exploit reconnaissance, vulnerability analysis, exploit database search (PASSIVE MODE ONLY - NO EXECUTION)
 
 CRITICAL RULES:
 1. Metasploit can ONLY be suggested if vulnerabilities_found = True
-2. If user wants exploitation but no vulnerabilities found, suggest more scanning
-3. Follow the proper workflow: Scan → Find Vulnerabilities → Then Exploit
+2. Metasploit can ONLY run ONCE per workflow - check execution_history before suggesting
+3. If user wants exploitation but no vulnerabilities found, suggest more scanning
+4. Follow the proper workflow: Scan → Find Vulnerabilities → Search Exploits (ONCE) → DONE
+5. Agent names MUST match exactly: "nmap", "wpscan", "nikto", "metasploit" (no extra words)
 
 Determine if we need to run additional agents based on the results:
 - If nmap found web servers (port 80/443/8080), suggest nikto to scan for web vulnerabilities
 - If nmap or nikto found WordPress, suggest wpscan for WordPress-specific scanning
-- If vulnerabilities were found AND user wants exploitation, suggest metasploit
+- If vulnerabilities were found AND user wants exploitation AND metasploit has NOT run yet, suggest metasploit to find potential exploits (passive mode only)
+- If metasploit already ran, mark as DONE (exploits were already found)
 - If NO vulnerabilities found but user wants exploitation, suggest more aggressive scanning
 - If the original request is already satisfied, mark as done
 
-Respond ONLY in this exact format:
+Respond ONLY in this exact format (use exact agent names from list above):
 DONE: [yes/no]
-NEXT_AGENT: [agent name or "none"]
+NEXT_AGENT: [exact agent name or "none"]
 REASONING: [brief explanation]
 TASK: [specific task for next agent, or "none"]"""
 
@@ -927,7 +954,7 @@ Respond with ONLY the task description, nothing else."""
             )
 
             execution_history = []
-            max_iterations = 50
+            max_iterations = 10
 
             analysis = self._analyze_request(user_request)
 
@@ -1047,7 +1074,13 @@ Create a comprehensive response that:
 2. Summarizes key findings from each agent
 3. Explains what the combined results mean
 4. Highlights important security findings or issues
-5. Suggests follow-up actions if appropriate
+5. If metasploit was used, clarify that exploits were FOUND (passive reconnaissance) but NOT EXECUTED
+6. Suggests follow-up actions if appropriate
+
+IMPORTANT: If metasploit appears in execution history, explain that it operates in PASSIVE MODE:
+- It searches the exploit database for matching exploits
+- It does NOT execute exploits or gain access to systems
+- The exploits listed are POTENTIAL exploits that could be used
 
 Start with: "I executed {len(execution_history)} security scan(s)..." """
 

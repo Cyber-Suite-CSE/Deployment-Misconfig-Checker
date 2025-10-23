@@ -88,11 +88,23 @@ def main():
     # Load environment variables
     load_dotenv()
 
-    # Check for API key
-    if not os.getenv("GOOGLE_API_KEY"):
-        print(f"{Fore.RED}Error: GOOGLE_API_KEY not found{Style.RESET_ALL}")
-        print("Please create a .env file with:")
-        print(f"{Fore.YELLOW}GOOGLE_API_KEY=your_api_key_here{Style.RESET_ALL}")
+    llm_provider = os.getenv("LLM_PROVIDER", "openai")
+    
+    if llm_provider == "openai":
+        if not os.getenv("OPENAI_API_KEY"):
+            print(f"{Fore.RED}Error: OPENAI_API_KEY not found{Style.RESET_ALL}")
+            print("Please create a .env file with:")
+            print(f"{Fore.YELLOW}OPENAI_API_KEY=your_api_key_here{Style.RESET_ALL}")
+            sys.exit(1)
+    elif llm_provider == "google_genai":
+        if not os.getenv("GOOGLE_API_KEY"):
+            print(f"{Fore.RED}Error: GOOGLE_API_KEY not found{Style.RESET_ALL}")
+            print("Please create a .env file with:")
+            print(f"{Fore.YELLOW}GOOGLE_API_KEY=your_api_key_here{Style.RESET_ALL}")
+            sys.exit(1)
+    else:
+        print(f"{Fore.RED}Error: Invalid LLM_PROVIDER={llm_provider}{Style.RESET_ALL}")
+        print(f"Valid options: 'openai' or 'google_genai'")
         sys.exit(1)
 
     print(f"{Fore.CYAN}Checking system requirements...{Style.RESET_ALL}")
