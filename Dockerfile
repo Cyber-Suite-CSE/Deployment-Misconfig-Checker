@@ -29,9 +29,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Set default port
-ENV PORT=8002
-
 # Expose API port
 EXPOSE ${PORT}
 
