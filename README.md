@@ -1,70 +1,123 @@
-# Deployment-Misconfig-Checker
+# Multi-Agent Cybersecurity System
 
-An AI-driven security analysis platform that automatically detects deployment misconfigurations and CVEs in software projects. Evolved from manual exploit scripting to an intelligent multi-agent system that orchestrates industry-standard security tools through natural language queries.
+A hierarchical multi-agent system for cybersecurity and penetration testing tasks using LangChain and Google Gemini.
 
-## Problem Statement
-
-AI-generated code is often deployed with critical misconfigurations. Manual security audits are time-consuming and require writing custom exploit scripts for each vulnerability. This tool automates the entire discovery-to-exploitation workflow using pre-existing exploit databases.
-
-## Architecture: Multi-Agent System
-
-### Orchestrator Agent
-Central controller that processes natural language queries (e.g., "check localhost") and manages specialized sub-agents, aggregating results into human-readable security reports.
-
-### Specialized Sub-Agents
-Each agent has dedicated tool context and expertise:
-
-- **Nmap Agent**: Network scanning and service discovery
-- **Nikto Agent**: Web server vulnerability detection and misconfiguration scanning
-- **Metasploit Agent**: Exploit search and verification (passive/active modes)
-- **WPScan Agent**: WordPress-specific security analysis
-
-## Operational Workflow
+## Architecture
 
 ```
-User Query → Service Discovery → Vulnerability Scanning → Exploit Search → Report Generation
-   (CLI)         (Nmap)              (Nikto)            (Metasploit)     (Orchestrator)
+User Request → OrchestratorAgent → Tool-Specific Agent (NMAP/WPScan) → Tool Execution → Response
 ```
 
-1. **Natural Language Input**: User provides query via CLI
-2. **Service Discovery**: Nmap identifies running services and open ports
-3. **Vulnerability Detection**: Nikto/WPScan scan for specific misconfigurations
-4. **Exploit Research**: Metasploit searches database for applicable exploits
-5. **Reporting**: Orchestrator generates comprehensive vulnerability report with mitigation strategies
+- **Orchestrator Agent**: Analyzes user requests and routes to appropriate tool agents
+- **NMAP Agent**: Specialized agent for network scanning and reconnaissance
+- **NMAP Tool**: Executes actual nmap commands safely
+- **WPScan Agent**: Specialized agent for WordPress security scanning
+- **WPScan Tool**: Executes actual wpscan commands safely
 
-## Deprecated Services
+## Setup
 
-- **CVE Service**: Validates CVEs via NVD API, extracts CPE identifiers, generates AI-powered mitigation strategies
-- **Misconfig Service**: Fingerprints configurations and matches against known vulnerability patterns
-
-## Key Features
-
-- Natural language security queries powered by LangChain + Google Gemini
-- Automated context switching between discovery, scanning, and exploitation
-- Leverages pre-written exploits from Metasploit database (no manual scripting)
-- Passive and active exploitation modes
-- Human-readable security reports with actionable insights
-
-## Quick Setup
+### 1. Install Dependencies
 
 ```bash
-# Configure environment
-cp .env.example .env  # Set GOOGLE_API_KEY, MSF_PASSWORD
-
-# Install dependencies per service
-cd agent && pip install -r requirements.txt
-
-# Run the agent system
-cd agent && python main.py
+pip install -r requirements.txt
 ```
 
-## Prerequisites
+### 2. Install NMAP
 
-- Python 3.8+
-- Security tools: Nmap, Nikto, WPScan, Metasploit Framework
-- Google Gemini API key
+- **Ubuntu/Debian**: `sudo apt-get install nmap`
+- **MacOS**: `brew install nmap`
+- **Windows**: Download from [nmap.org](https://nmap.org/download.html)
 
-## Project Evolution
+### 3. Install WPScan
 
-**Initial Approach**: Manual script generation for each CVE exploit  
-**Current Approach**: Intelligent agent orchestration utilizing existing exploit databases and automated workflow chaining
+- **Ubuntu/Debian**: `sudo apt-get install wpscan`
+- **MacOS**: `brew install wpscan`
+- **Ruby Gem**: `gem install wpscan`
+- **Docker**: `docker pull wpscanteam/wpscan`
+
+### 4. Configure API Key
+
+1. Get a Google Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Create a `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+3. Edit `.env` and add your API key:
+
+```
+GOOGLE_API_KEY=your_actual_api_key_here
+```
+
+## Usage
+
+Run the system:
+
+```bash
+msfrpcd -P yourpassword -p 55553
+python main.py
+```
+
+### Example Commands
+
+- **Basic port scan**: "Scan localhost for open ports"
+- **Network discovery**: "Find all devices on 192.168.1.0/24"
+- **Service detection**: "What services are running on 192.168.1.1?"
+- **Stealth scan**: "Perform a stealth scan on example.com"
+- **OS detection**: "Detect the operating system of 10.0.0.1"
+- **Help with nmap**: "Show me how to use nmap for vulnerability scanning"
+- **WordPress scan**: "Scan https://example.com for WordPress vulnerabilities"
+- **Plugin enumeration**: "Find WordPress plugins on https://example.com"
+- **User enumeration**: "Enumerate users on WordPress site https://example.com"
+- **Theme detection**: "Check WordPress themes on https://example.com"
+
+### Available Commands
+
+- Type natural language requests for scanning tasks
+- `help` or `?` - Show help message
+- `capabilities` - Show available agent capabilities
+- `clear` - Clear the screen
+- `exit` or `quit` - Exit the program
+
+## Project Structure
+
+```
+cyber_agent_system/
+├── agents/
+│   ├── orchestrator_agent.py   # Main orchestrator
+│   ├── nmap_agent.py           # NMAP specialist
+│   └── wpscan_agent.py         # WPScan specialist
+├── tools/
+│   ├── nmap_tool.py            # NMAP execution tool
+│   └── wpscan_tool.py          # WPScan execution tool
+├── main.py                     # Entry point
+├── requirements.txt            # Dependencies
+├── .env.example               # Environment template
+└── README.md                  # This file
+```
+
+## Extending the System
+
+To add new tools:
+
+1. Create a new tool in `tools/` directory
+2. Create a specialized agent in `agents/` directory
+3. Register the agent in `orchestrator_agent.py`
+4. Update the orchestrator's routing logic
+
+## Security Notes
+
+- The system includes safety checks to prevent dangerous commands
+- Always use responsibly and only on networks you own or have permission to test
+- Be aware of local laws and regulations regarding network scanning
+
+## Future Enhancements
+
+- [ ] Add Metasploit agent
+- [ ] Add Nikto agent for web vulnerability scanning
+- [ ] Add SQLMap agent for SQL injection testing
+- [x] Add WPScan agent for WordPress security scanning
+- [ ] Implement agent memory for context retention
+- [ ] Add result parsing and structured output
+- [ ] Create web UI interface

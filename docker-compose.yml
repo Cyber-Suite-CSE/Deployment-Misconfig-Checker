@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  misconfig-checker:
+    build: .
+    container_name: misconfig-checker
+    restart: unless-stopped
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      - PORT=${PORT}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - MSF_SERVER=metasploit
+      - MSF_PORT=55553
+      - MSF_PASSWORD=${MSF_PASSWORD:-msf}
+      - MSF_SSL=true
+    depends_on:
+      - metasploit
+    networks:
+      - cyber-network
+
+  metasploit:
+    image: metasploitframework/metasploit-framework
+    container_name: metasploit
+    restart: unless-stopped
+    ports:
+      - "55553:55553"
+    environment:
+      - MSF_DATABASE_CONFIG=/usr/share/metasploit-framework/config/database.yml
+    entrypoint: /usr/src/metasploit-framework/msfrpcd
+    command: -P ${MSF_PASSWORD:-msf} -p 55553 -n -f -a 0.0.0.0
+    networks:
+      - cyber-network
+
+  dashboard:
+    build:
+      context: ../Cyber-Suite-Dashboard
+      dockerfile: Dockerfile.dev
+    container_name: cyber-suite-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MISCONFIG_CHECKER_URL=http://misconfig-checker:8002
+      # This enables the client-side proxy to reach the gateway
+      - NEXT_PUBLIC_CVE_SCANNER_API=/api/gateway/misconfig-checker
+    volumes:
+      - ../Cyber-Suite-Dashboard:/app
+      - /app/node_modules
+    networks:
+      - cyber-network
+
+networks:
+  cyber-network:
+    driver: bridge

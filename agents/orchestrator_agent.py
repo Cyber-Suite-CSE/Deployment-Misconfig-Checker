@@ -903,6 +903,86 @@ Respond with ONLY the task description, nothing else."""
 
         return agent_name, specific_task
 
+
+    def run_workflow(self, user_request: str, max_iterations: int = 50) -> Dict[str, Any]:
+        """
+        Execute the workflow programmatically and return structured results
+        
+        Args:
+            user_request: The user's request
+            max_iterations: Maximum number of agent steps
+            
+        Returns:
+            Dictionary containing execution history, results, and synthesis
+        """
+        try:
+            # Check for information query first
+            if self._is_information_query(user_request):
+                response = self._answer_information_query(user_request)
+                return {
+                    "success": True,
+                    "type": "information",
+                    "response": response,
+                    "execution_history": []
+                }
+
+            execution_history = []
+            analysis = self._analyze_request(user_request)
+            
+            agent_name, specific_task = self._determine_initial_agent(
+                user_request, analysis
+            )
+
+            for iteration in range(max_iterations):
+                # Prepare vulnerability data for Metasploit agent
+                vulnerability_data = None
+                if agent_name == "metasploit" and execution_history:
+                    vulnerability_data = self._collect_vulnerability_data(execution_history)
+
+                result = self._route_to_agent(agent_name, specific_task, vulnerability_data)
+
+                if not result.get("success") or not result.get("executed"):
+                    break
+
+                structured_data = self.tool_agents[agent_name].parse_output(
+                    result.get("result", "")
+                )
+
+                execution_history.append(
+                    {
+                        "agent": agent_name,
+                        "task": specific_task,
+                        "structured_data": structured_data,
+                        "raw_result": result.get("result", ""),
+                        "timestamp": str(iteration) 
+                    }
+                )
+
+                next_steps = self._analyze_next_steps(user_request, execution_history)
+
+                if next_steps["done"] or next_steps["next_agent"] == "none":
+                    break
+
+                agent_name = next_steps["next_agent"]
+                specific_task = next_steps["task"]
+
+            synthesis = self._synthesize_results(user_request, execution_history)
+            
+            return {
+                "success": True,
+                "type": "execution",
+                "response": synthesis,
+                "execution_history": execution_history,
+                "vulnerabilities": self._check_vulnerabilities_found(execution_history)
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "execution_history": []
+            }
+
     def process_user_request(self, user_request: str) -> str:
         """
         Main method to process user requests with multi-agent workflow support
