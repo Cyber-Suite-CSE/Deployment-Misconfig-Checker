@@ -1,6 +1,5 @@
 import os
 from typing import List, Dict, Any
-from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.agents.output_parsers import ReActSingleInputOutputParser
@@ -13,6 +12,7 @@ import re
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.nikto_tool import execute_nikto
 from models.structured_results import NiktoResult
+from llm_factory import create_llm
 
 init(autoreset=True)
 
@@ -59,13 +59,7 @@ class NiktoAgent:
         )
 
         if llm is None:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY not found in environment variables")
-
-            self.llm = init_chat_model(
-                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
-            )
+            self.llm = create_llm(temperature=0.1)
         else:
             self.llm = llm
 
@@ -202,9 +196,7 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
             Dictionary containing structured nikto results
         """
         try:
-            parsing_llm = init_chat_model(
-                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
-            )
+            parsing_llm = create_llm(temperature=0.1)
 
             structured_llm = parsing_llm.with_structured_output(NiktoResult)
 

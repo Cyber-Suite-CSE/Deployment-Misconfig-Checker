@@ -1,6 +1,5 @@
 import os
 from typing import Dict, Any, List, Optional
-from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 from colorama import init, Fore, Style
@@ -8,6 +7,7 @@ from agents.nmap_agent import NmapAgent
 from agents.wpscan_agent import WpscanAgent
 from agents.nikto_agent import NiktoAgent
 from agents.metasploit_passive_agent import MetasploitPassiveAgent
+from llm_factory import create_llm
 
 init(autoreset=True)
 
@@ -84,14 +84,7 @@ class OrchestratorAgent:
 
     def __init__(self):
         """Initialize the orchestrator with LLM and tool agents"""
-        # Initialize Google Gemini LLM
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
-
-        self.llm = init_chat_model(
-            "gemini-2.5-flash", model_provider="google_genai", temperature=0.3
-        )
+        self.llm = create_llm(temperature=0.3)
 
         # Initialize tool agents
         self.tool_agents = {

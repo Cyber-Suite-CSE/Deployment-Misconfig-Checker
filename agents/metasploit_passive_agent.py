@@ -1,6 +1,5 @@
 import os
 from typing import List, Dict, Any
-from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.prebuilt import create_react_agent as create_langgraph_agent
 from colorama import init, Fore, Style
@@ -14,6 +13,7 @@ from tools.metasploit_passive_tool import (
     search_exploits_by_cve,
 )
 from models.structured_results import MetasploitResult, ExploitInfo
+from llm_factory import create_llm
 
 init(autoreset=True)
 
@@ -77,13 +77,7 @@ class MetasploitPassiveAgent:
         print(f"{Fore.GREEN}[MetasploitPassiveAgent] Initializing Metasploit Reconnaissance Agent (PASSIVE MODE){Style.RESET_ALL}")
 
         if llm is None:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY not found in environment variables")
-
-            self.llm = init_chat_model(
-                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
-            )
+            self.llm = create_llm(temperature=0.1)
         else:
             self.llm = llm
 
