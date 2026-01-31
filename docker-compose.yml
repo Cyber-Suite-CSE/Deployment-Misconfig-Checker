@@ -41,7 +41,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - MISCONFIG_CHECKER_URL=http://misconfig-checker:8002
+      - MISCONFIG_CHECKER_URL=http://misconfig-checker:8003
       # This enables the client-side proxy to reach the gateway
       - NEXT_PUBLIC_CVE_SCANNER_API=/api/gateway/misconfig-checker
     volumes:
