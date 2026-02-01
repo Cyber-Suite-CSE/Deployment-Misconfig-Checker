@@ -768,7 +768,7 @@ Respond with ONLY the task description, nothing else."""
         return agent_name, specific_task
 
     def run_workflow(
-        self, user_request: str, max_iterations: int = 50
+        self, user_request: str, max_iterations: int = 50, progress_callback=None
     ) -> Dict[str, Any]:
         """
         Execute the workflow programmatically and return structured results
@@ -826,6 +826,19 @@ Respond with ONLY the task description, nothing else."""
                         "timestamp": str(iteration),
                     }
                 )
+
+                # Notify progress callback for real-time updates
+                if progress_callback:
+                    progress_callback(
+                        {
+                            "agent": agent_name,
+                            "task": specific_task,
+                            "structured_data": structured_data,
+                            "raw_result": result.get("result", ""),
+                            "timestamp": str(iteration),
+                            "step": iteration + 1,
+                        }
+                    )
 
                 next_steps = self._analyze_next_steps(user_request, execution_history)
 
