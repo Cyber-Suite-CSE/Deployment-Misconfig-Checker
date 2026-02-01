@@ -23,55 +23,11 @@ from models.structured_results import (
     ModuleResult,
 )
 from llm_factory import create_llm
+from prompts import PromptProvider
 
 init(autoreset=True)
 
-
-METASPLOIT_AGENT_PROMPT = """You are a Metasploit EXPLOITATION agent that receives vulnerability data from scanning agents and EXPLOITS them.
-
-⚠️ CRITICAL WARNING ⚠️
-This agent has REAL EXPLOITATION CAPABILITIES. Only use against authorized targets in controlled environments.
-
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. You MUST use the Metasploit tools for EVERY request - NO EXCEPTIONS
-2. NEVER just explain what a module would do - ACTUALLY RUN IT using the tools
-3. ALWAYS execute first, explain second
-4. If asked about Metasploit capabilities, use list_exploits or list_payloads tools
-5. DO NOT simulate or pretend to run exploits - USE THE TOOLS
-
-Your expertise includes all Metasploit features:
-- Exploitation: Running exploit modules against targets
-- Payload Generation: Creating custom payloads for various platforms
-- Post-Exploitation: Running post modules on compromised sessions
-- Session Management: Interacting with active Meterpreter/shell sessions
-- Auxiliary Modules: Running scanners, fuzzers, and other auxiliary tools
-
-When you receive ANY request about exploitation or Metasploit:
-1. IMMEDIATELY use the appropriate tool
-2. Pass the correct parameters to the tool
-3. Show the actual output from the tool
-4. Then explain what the results mean
-
-EXPLOITATION WORKFLOW:
-1. List available exploits if needed (list_exploits)
-2. Configure and execute exploit (execute_exploit)
-3. Check for sessions (manage_sessions with action=list)
-4. Run post modules if session established (run_post_module)
-
-EXAMPLES OF WHAT YOU MUST DO:
-- Request: "Exploit EternalBlue on 192.168.1.100" → USE TOOL: execute_exploit("exploit/windows/smb/ms17_010_eternalblue", "192.168.1.100", ...)
-- Request: "Generate Windows payload" → USE TOOL: generate_payload("windows/meterpreter/reverse_tcp", ...)
-- Request: "List active sessions" → USE TOOL: manage_sessions(action="list")
-- Request: "Run hashdump on session 1" → USE TOOL: run_post_module("post/windows/gather/hashdump", "1")
-- Request: "Find SMB exploits" → USE TOOL: list_exploits("smb")
-
-Available tools: {tool_names}
-Tool descriptions: {tools}
-
-REMEMBER: Your response MUST include actual tool execution. If you don't see [DEBUG] output in your response, you did it wrong!
-
-Current request that you MUST EXECUTE: {input}
-{agent_scratchpad}"""
+METASPLOIT_AGENT_PROMPT = PromptProvider.get_agent_prompt("metasploit", "system")
 
 
 class MetasploitAgent:
@@ -79,16 +35,22 @@ class MetasploitAgent:
 
     def __init__(self, llm=None):
         """Initialize the Metasploit agent with LLM"""
-        print(f"{Fore.GREEN}[MetasploitAgent] Initializing Metasploit Exploitation Agent{Style.RESET_ALL}")
+        print(
+            f"{Fore.GREEN}[MetasploitAgent] Initializing Metasploit Exploitation Agent{Style.RESET_ALL}"
+        )
 
         if llm is None:
             self.llm = create_llm(temperature=0.1)
         else:
             self.llm = llm
 
-        print(f"{Fore.RED}[MetasploitAgent] EXPLOITATION MODE - Will execute real exploits{Style.RESET_ALL}")
+        print(
+            f"{Fore.RED}[MetasploitAgent] EXPLOITATION MODE - Will execute real exploits{Style.RESET_ALL}"
+        )
 
-    def process_request(self, user_request: str, vulnerability_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def process_request(
+        self, user_request: str, vulnerability_data: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """
         Process an exploitation request based on vulnerability data from scanning agents
 
@@ -100,19 +62,29 @@ class MetasploitAgent:
             Dictionary containing exploitation results
         """
         print(f"{Fore.RED}[MetasploitAgent] ========================================")
-        print(f"{Fore.YELLOW}[MetasploitAgent] EXPLOITATION REQUEST: {Fore.WHITE}{user_request}")
-        print(f"{Fore.RED}[MetasploitAgent] ========================================{Style.RESET_ALL}")
+        print(
+            f"{Fore.YELLOW}[MetasploitAgent] EXPLOITATION REQUEST: {Fore.WHITE}{user_request}"
+        )
+        print(
+            f"{Fore.RED}[MetasploitAgent] ========================================{Style.RESET_ALL}"
+        )
 
         try:
             # Extract target and vulnerability info
             target_ip = self._extract_target_ip(user_request, vulnerability_data)
-            vuln_info = self._extract_vulnerability_info(user_request, vulnerability_data)
+            vuln_info = self._extract_vulnerability_info(
+                user_request, vulnerability_data
+            )
 
             print(f"{Fore.CYAN}[MetasploitAgent] Target: {target_ip}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}[MetasploitAgent] Vulnerabilities: {vuln_info}{Style.RESET_ALL}")
+            print(
+                f"{Fore.CYAN}[MetasploitAgent] Vulnerabilities: {vuln_info}{Style.RESET_ALL}"
+            )
 
             # Step 1: Search for appropriate exploit
-            print(f"{Fore.YELLOW}[MetasploitAgent] Step 1: Searching for exploits...{Style.RESET_ALL}")
+            print(
+                f"{Fore.YELLOW}[MetasploitAgent] Step 1: Searching for exploits...{Style.RESET_ALL}"
+            )
             search_result = search_and_select_exploit(vuln_info)
 
             # Parse the selected exploit from result
@@ -127,11 +99,15 @@ class MetasploitAgent:
                 }
 
             # Step 2: Execute the exploit
-            print(f"{Fore.RED}[MetasploitAgent] Step 2: EXECUTING EXPLOIT: {exploit_module}{Style.RESET_ALL}")
+            print(
+                f"{Fore.RED}[MetasploitAgent] Step 2: EXECUTING EXPLOIT: {exploit_module}{Style.RESET_ALL}"
+            )
             exploit_result = execute_exploit(exploit_module, target_ip)
 
             # Step 3: Check for sessions
-            print(f"{Fore.YELLOW}[MetasploitAgent] Step 3: Checking for sessions...{Style.RESET_ALL}")
+            print(
+                f"{Fore.YELLOW}[MetasploitAgent] Step 3: Checking for sessions...{Style.RESET_ALL}"
+            )
             session_result = check_sessions()
 
             # Combine results
@@ -146,13 +122,22 @@ class MetasploitAgent:
             final_result += f"\n{session_result}"
 
             # Check if exploitation was successful
-            success = "EXPLOITATION SUCCESSFUL" in session_result or "Session" in session_result
+            success = (
+                "EXPLOITATION SUCCESSFUL" in session_result
+                or "Session" in session_result
+            )
 
-            print(f"{Fore.GREEN if success else Fore.RED}[MetasploitAgent] Exploitation {'SUCCESSFUL' if success else 'FAILED'}{Style.RESET_ALL}")
-            print(f"{Fore.RED}[MetasploitAgent] ========================================{Style.RESET_ALL}")
+            print(
+                f"{Fore.GREEN if success else Fore.RED}[MetasploitAgent] Exploitation {'SUCCESSFUL' if success else 'FAILED'}{Style.RESET_ALL}"
+            )
+            print(
+                f"{Fore.RED}[MetasploitAgent] ========================================{Style.RESET_ALL}"
+            )
 
             # Create structured result
-            structured_result = self._parse_to_structured_result(final_result, user_request)
+            structured_result = self._parse_to_structured_result(
+                final_result, user_request
+            )
 
             return {
                 "success": True,
@@ -174,7 +159,9 @@ class MetasploitAgent:
                 "request": user_request,
             }
 
-    def _extract_target_ip(self, user_request: str, vulnerability_data: Dict[str, Any] = None) -> str:
+    def _extract_target_ip(
+        self, user_request: str, vulnerability_data: Dict[str, Any] = None
+    ) -> str:
         """Extract target IP from request or vulnerability data"""
         import re
 
@@ -183,20 +170,22 @@ class MetasploitAgent:
             return vulnerability_data["target"]
 
         # Try to extract IP from user_request
-        ip_pattern = r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+        ip_pattern = r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
         matches = re.findall(ip_pattern, user_request)
         if matches:
             return matches[0]
 
         # Try to extract URL and convert to IP
-        url_pattern = r'https?://([^/]+)'
+        url_pattern = r"https?://([^/]+)"
         url_matches = re.findall(url_pattern, user_request)
         if url_matches:
             return url_matches[0]
 
         return "127.0.0.1"  # Default to localhost
 
-    def _extract_vulnerability_info(self, user_request: str, vulnerability_data: Dict[str, Any] = None) -> str:
+    def _extract_vulnerability_info(
+        self, user_request: str, vulnerability_data: Dict[str, Any] = None
+    ) -> str:
         """Extract vulnerability information from request or vulnerability data"""
         vuln_info = []
 
@@ -232,19 +221,19 @@ class MetasploitAgent:
         import re
 
         # Look for patterns like "Selected Exploit: exploit/..."
-        pattern = r'Selected Exploit:\s*([^\n]+)'
+        pattern = r"Selected Exploit:\s*([^\n]+)"
         matches = re.findall(pattern, search_result)
         if matches:
             return matches[0].strip()
 
         # Look for patterns like "exploit/..."
-        pattern = r'(exploit/[^\s\n]+)'
+        pattern = r"(exploit/[^\s\n]+)"
         matches = re.findall(pattern, search_result)
         if matches:
             return matches[0].strip()
 
         # Look for patterns like "auxiliary/..."
-        pattern = r'(auxiliary/[^\s\n]+)'
+        pattern = r"(auxiliary/[^\s\n]+)"
         matches = re.findall(pattern, search_result)
         if matches:
             return matches[0].strip()
@@ -252,12 +241,6 @@ class MetasploitAgent:
         return None
 
     # Removed old workflow methods - no longer needed for MVP
-
-
-
-
-
-
 
     def _verify_execution(self, response: str) -> bool:
         """Verify if actual Metasploit commands were executed"""
@@ -374,8 +357,10 @@ class MetasploitAgent:
             Dictionary with structured MetasploitResult data
         """
         # Use the existing parser with a generic request
-        structured = self._parse_to_structured_result(raw_output, "Metasploit operation")
+        structured = self._parse_to_structured_result(
+            raw_output, "Metasploit operation"
+        )
         # Convert to dict if it's a Pydantic model
-        if hasattr(structured, 'model_dump'):
+        if hasattr(structured, "model_dump"):
             return structured.model_dump()
         return structured

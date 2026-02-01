@@ -1,0 +1,18 @@
+Parse the following Nikto scan output into structured format.
+
+Raw Nikto output:
+{raw_output}
+
+Extract the following information:
+1. Target host and port that was scanned
+2. Server information detected
+3. List of vulnerabilities found with descriptions
+4. SSL/TLS configuration issues if any
+5. Server misconfigurations detected
+6. Outdated software or versions identified
+7. CGI scripts and dangerous files found
+8. HTTP methods enabled
+9. Overall security assessment
+
+Be accurate and only include information that is actually present in the output.
+If a field has no data, use the default empty value.

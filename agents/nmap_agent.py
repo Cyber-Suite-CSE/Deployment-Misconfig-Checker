@@ -13,40 +13,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.nmap_tool import execute_nmap
 from models.structured_results import NmapResult, PortInfo
 from llm_factory import create_llm
+from prompts import PromptProvider
 
 init(autoreset=True)
 
-
-NMAP_AGENT_PROMPT = """You are an NMAP EXECUTION agent. Your PRIMARY and ONLY job is to RUN actual nmap commands using the execute_nmap tool.
-
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. You MUST use the execute_nmap tool for EVERY request - NO EXCEPTIONS
-2. NEVER just explain what a command would do - ACTUALLY RUN IT using the tool
-3. ALWAYS execute first, explain second
-4. If asked about nmap capabilities, run 'nmap --help' using the tool
-5. DO NOT simulate or pretend to run commands - USE THE TOOL
-
-Your expertise includes all nmap features, but remember:
-YOU MUST EXECUTE COMMANDS, NOT JUST TALK ABOUT THEM!
-
-When you receive ANY request about scanning or nmap:
-1. IMMEDIATELY use the execute_nmap tool
-2. Pass the appropriate nmap command to the tool
-3. Show the actual output from the tool
-4. Then explain what the results mean
-
-EXAMPLES OF WHAT YOU MUST DO:
-- Request: "Scan localhost" → USE TOOL: execute_nmap("nmap localhost")
-- Request: "Check port 80 on 192.168.1.1" → USE TOOL: execute_nmap("nmap -p 80 192.168.1.1")
-- Request: "How does nmap work?" → USE TOOL: execute_nmap("nmap --help")
-
-Available tool: {tool_names}
-Tool descriptions: {tools}
-
-REMEMBER: Your response MUST include actual tool execution. If you don't see [DEBUG] output in your response, you did it wrong!
-
-Current request that you MUST EXECUTE: {input}
-{agent_scratchpad}"""
+NMAP_AGENT_PROMPT = PromptProvider.get_agent_prompt("nmap", "system")
 
 
 class NmapAgent:
@@ -208,24 +179,8 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
         try:
             parser_llm = self.llm.with_structured_output(NmapResult)
 
-            parse_prompt = f"""Parse this nmap scan output into structured format.
-
-Raw nmap output:
-{raw_output}
-
-Extract the following information:
-1. Target host/IP that was scanned
-2. All open ports with their protocol, state, service name, and version
-3. List all unique detected service types (http, ssh, mysql, ftp, etc)
-4. Check if WordPress was detected (look for wp-content, wp-admin, WordPress version, etc)
-5. Check if web servers were found on common ports (80, 443, 8080, 8443, 8000)
-6. OS detection information if present
-7. Any vulnerabilities mentioned in NSE scripts
-8. Whether the host is up or down
-9. Brief summary of the scan (2-3 sentences)
-
-Be accurate and only include information that is actually present in the output.
-If a field has no data, use the default empty value."""
+            parse_prompt_template = PromptProvider.get_agent_prompt("nmap", "parsing")
+            parse_prompt = parse_prompt_template.format(raw_output=raw_output)
 
             structured_result = parser_llm.invoke(parse_prompt)
 

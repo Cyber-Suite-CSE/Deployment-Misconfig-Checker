@@ -1,0 +1,17 @@
+Parse this WPScan output into structured format.
+
+Raw WPScan output:
+{raw_output}
+
+Extract the following information:
+1. Target URL that was scanned
+2. WordPress version detected (if any)
+3. List of plugins found with their versions and vulnerabilities
+4. List of themes found with their versions and vulnerabilities
+5. Users enumerated (if any)
+6. WordPress vulnerabilities found
+7. Security issues or misconfigurations detected
+8. Overall security assessment
+
+Be accurate and only include information that is actually present in the output.
+If a field has no data, use the default empty value.

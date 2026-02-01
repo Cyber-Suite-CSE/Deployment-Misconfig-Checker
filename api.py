@@ -47,7 +47,7 @@ def run_scan_job(job_id: str, domain: str):
         request = f"Perform a comprehensive security scan on {domain}. Check for open ports, web vulnerabilities, and any misconfigurations."
         
         # Run workflow
-        result = orchestrator.run_workflow(request, max_iterations=20)
+        result = orchestrator.run_workflow(request, max_iterations=5)
         
         if result["success"]:
             jobs[job_id]["status"] = "completed"

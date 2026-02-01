@@ -1,0 +1,18 @@
+Parse this nmap scan output into structured format.
+
+Raw nmap output:
+{raw_output}
+
+Extract the following information:
+1. Target host/IP that was scanned
+2. All open ports with their protocol, state, service name, and version
+3. List all unique detected service types (http, ssh, mysql, ftp, etc)
+4. Check if WordPress was detected (look for wp-content, wp-admin, WordPress version, etc)
+5. Check if web servers were found on common ports (80, 443, 8080, 8443, 8000)
+6. OS detection information if present
+7. Any vulnerabilities mentioned in NSE scripts
+8. Whether the host is up or down
+9. Brief summary of the scan (2-3 sentences)
+
+Be accurate and only include information that is actually present in the output.
+If a field has no data, use the default empty value.

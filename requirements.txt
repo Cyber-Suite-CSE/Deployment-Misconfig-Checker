@@ -1,6 +1,6 @@
 langchain==0.3.13
 langchain-google-genai==2.0.7
-langchain-openai==0.2.14
+langchain-openai==0.2.12
 langchain-core==0.3.26
 langgraph==0.2.61
 python-dotenv==1.0.1

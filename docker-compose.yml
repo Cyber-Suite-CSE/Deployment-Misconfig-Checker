@@ -10,6 +10,8 @@ services:
     environment:
       - PORT=${PORT}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER}
       - MSF_SERVER=metasploit
       - MSF_PORT=55553
       - MSF_PASSWORD=${MSF_PASSWORD:-msf}

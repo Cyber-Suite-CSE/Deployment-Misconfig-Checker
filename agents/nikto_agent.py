@@ -13,40 +13,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.nikto_tool import execute_nikto
 from models.structured_results import NiktoResult
 from llm_factory import create_llm
+from prompts import PromptProvider
 
 init(autoreset=True)
 
-
-NIKTO_AGENT_PROMPT = """You are a Nikto EXECUTION agent. Your PRIMARY and ONLY job is to RUN actual nikto commands using the execute_nikto tool.
-
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. You MUST use the execute_nikto tool for EVERY request - NO EXCEPTIONS
-2. NEVER just explain what a command would do - ACTUALLY RUN IT using the tool
-3. ALWAYS execute first, explain second
-4. If asked about nikto capabilities, run 'nikto -Help' using the tool
-5. DO NOT simulate or pretend to run commands - USE THE TOOL
-
-Your expertise includes all nikto features, but remember:
-YOU MUST EXECUTE COMMANDS, NOT JUST TALK ABOUT THEM!
-
-When you receive ANY request about web vulnerability scanning or nikto:
-1. IMMEDIATELY use the execute_nikto tool
-2. Pass the appropriate nikto command to the tool
-3. Show the actual output from the tool
-4. Then explain what the results mean
-
-EXAMPLES OF WHAT YOU MUST DO:
-- Request: "Scan https://example.com" → USE TOOL: execute_nikto("nikto -h https://example.com")
-- Request: "Scan https://example.com on port 8080" → USE TOOL: execute_nikto("nikto -h https://example.com -p 8080")
-- Request: "How does nikto work?" → USE TOOL: execute_nikto("nikto -Help")
-
-Available tool: {tool_names}
-Tool descriptions: {tools}
-
-REMEMBER: Your response MUST include actual tool execution. If you don't see [DEBUG] output in your response, you did it wrong!
-
-Current request that you MUST EXECUTE: {input}
-{agent_scratchpad}"""
+NIKTO_AGENT_PROMPT = PromptProvider.get_agent_prompt("nikto", "system")
 
 
 class NiktoAgent:
@@ -200,23 +171,10 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
 
             structured_llm = parsing_llm.with_structured_output(NiktoResult)
 
-            parsing_prompt = f"""Parse the following Nikto scan output into structured format.
-
-Extract:
-- Target host/URL and port
-- Web server software/version
-- Whether WordPress is detected
-- Vulnerabilities found (with IDs if available)
-- Interesting files/directories/findings
-- SSL/TLS information if present
-- Outdated software detected
-- Misconfigurations
-- A brief summary
-
-Nikto Output:
-{raw_output}
-
-Return a structured NiktoResult object."""
+            parsing_prompt_template = PromptProvider.get_agent_prompt(
+                "nikto", "parsing"
+            )
+            parsing_prompt = parsing_prompt_template.format(raw_output=raw_output)
 
             result = structured_llm.invoke(parsing_prompt)
             result_dict = result if isinstance(result, dict) else result.model_dump()

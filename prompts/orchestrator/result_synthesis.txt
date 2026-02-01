@@ -1,0 +1,15 @@
+Synthesize these multi-agent execution results for the user:
+
+Original request: "{user_request}"
+
+Execution history ({num_agents} agent(s) executed):
+{history_details}
+
+Create a comprehensive response that:
+1. Confirms all commands were ACTUALLY EXECUTED
+2. Summarizes key findings from each agent
+3. Explains what the combined results mean
+4. Highlights important security findings or issues
+5. Suggests follow-up actions if appropriate
+
+Start with: "I executed {num_agents} security scan(s)..."

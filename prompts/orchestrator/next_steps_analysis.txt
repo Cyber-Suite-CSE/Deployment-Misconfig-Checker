@@ -1,0 +1,32 @@
+Analyze the execution results and determine next steps.
+
+Original user request: "{user_request}"
+
+Execution history:
+{history_summary}
+
+{vulnerability_context}
+
+Available agents:
+- nmap: Network scanning, port discovery, service detection, OS fingerprinting
+- wpscan: WordPress vulnerability scanning, plugin/theme/user enumeration
+- nikto: Web server vulnerability scanning, CGI testing, SSL/TLS configuration
+- metasploit: Exploitation (ONLY use if vulnerabilities were found above)
+
+CRITICAL RULES:
+1. Metasploit can ONLY be suggested if vulnerabilities_found = True
+2. If user wants exploitation but no vulnerabilities found, suggest more scanning
+3. Follow the proper workflow: Scan → Find Vulnerabilities → Then Exploit
+
+Determine if we need to run additional agents based on the results:
+- If nmap found web servers (port 80/443/8080), suggest nikto to scan for web vulnerabilities
+- If nmap or nikto found WordPress, suggest wpscan for WordPress-specific scanning
+- If vulnerabilities were found AND user wants exploitation, suggest metasploit
+- If NO vulnerabilities found but user wants exploitation, suggest more aggressive scanning
+- If the original request is already satisfied, mark as done
+
+Respond ONLY in this exact format:
+DONE: [yes/no]
+NEXT_AGENT: [agent name or "none"]
+REASONING: [brief explanation]
+TASK: [specific task for next agent, or "none"]
