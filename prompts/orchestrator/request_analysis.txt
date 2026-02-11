@@ -1,0 +1,15 @@
+Analyze this cybersecurity request and determine:
+1. What is the user trying to accomplish?
+2. Which tool agent(s) should be used?
+3. What specific task(s) should be given to each agent?
+
+User request: "{user_request}"
+
+Available agents: {available_agents}
+
+Respond in this format:
+INTENT: [brief description of user's goal]
+TOOLS_NEEDED: [list of tool agents needed]
+TASKS:
+- [specific task 1 for agent X]
+- [specific task 2 for agent Y]

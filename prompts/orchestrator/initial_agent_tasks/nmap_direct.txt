@@ -1,0 +1,11 @@
+Based on this analysis:
+{analysis}
+
+Original user request: "{user_request}"
+
+Create a specific, actionable task for the NMAP agent. Be precise about:
+- What to scan (targets)
+- What information to gather (ports, services, OS, etc.)
+- Any specific scan techniques needed
+
+Respond with ONLY the task description, nothing else.

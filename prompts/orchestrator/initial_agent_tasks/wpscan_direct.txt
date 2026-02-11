@@ -1,0 +1,11 @@
+Based on this analysis:
+{analysis}
+
+Original user request: "{user_request}"
+
+Create a specific, actionable task for the WPScan agent. Be precise about:
+- What URL to scan
+- What to enumerate (plugins, themes, users, etc.)
+- Any specific scan options needed
+
+Respond with ONLY the task description, nothing else.

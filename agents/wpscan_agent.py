@@ -1,6 +1,5 @@
 import os
 from typing import List, Dict, Any
-from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.agents.output_parsers import ReActSingleInputOutputParser
@@ -13,40 +12,12 @@ import re
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.wpscan_tool import execute_wpscan
 from models.structured_results import WPScanResult, PluginInfo, ThemeInfo
+from llm_factory import create_llm
+from prompts import PromptProvider
 
 init(autoreset=True)
 
-
-WPSCAN_AGENT_PROMPT = """You are a WPScan EXECUTION agent. Your PRIMARY and ONLY job is to RUN actual wpscan commands using the execute_wpscan tool.
-
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. You MUST use the execute_wpscan tool for EVERY request - NO EXCEPTIONS
-2. NEVER just explain what a command would do - ACTUALLY RUN IT using the tool
-3. ALWAYS execute first, explain second
-4. If asked about wpscan capabilities, run 'wpscan --help' using the tool
-5. DO NOT simulate or pretend to run commands - USE THE TOOL
-
-Your expertise includes all wpscan features, but remember:
-YOU MUST EXECUTE COMMANDS, NOT JUST TALK ABOUT THEM!
-
-When you receive ANY request about WordPress scanning or wpscan:
-1. IMMEDIATELY use the execute_wpscan tool
-2. Pass the appropriate wpscan command to the tool
-3. Show the actual output from the tool
-4. Then explain what the results mean
-
-EXAMPLES OF WHAT YOU MUST DO:
-- Request: "Scan https://example.com" → USE TOOL: execute_wpscan("wpscan --url https://example.com")
-- Request: "Enumerate users on https://site.com" → USE TOOL: execute_wpscan("wpscan --url https://site.com --enumerate u")
-- Request: "How does wpscan work?" → USE TOOL: execute_wpscan("wpscan --help")
-
-Available tool: {tool_names}
-Tool descriptions: {tools}
-
-REMEMBER: Your response MUST include actual tool execution. If you don't see [DEBUG] output in your response, you did it wrong!
-
-Current request that you MUST EXECUTE: {input}
-{agent_scratchpad}"""
+WPSCAN_AGENT_PROMPT = PromptProvider.get_agent_prompt("wpscan", "system")
 
 
 class WpscanAgent:
@@ -59,13 +30,7 @@ class WpscanAgent:
         )
 
         if llm is None:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY not found in environment variables")
-
-            self.llm = init_chat_model(
-                "gemini-2.5-flash", model_provider="google_genai", temperature=0.1
-            )
+            self.llm = create_llm(temperature=0.1)
         else:
             self.llm = llm
 
@@ -207,24 +172,8 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
         try:
             parser_llm = self.llm.with_structured_output(WPScanResult)
 
-            parse_prompt = f"""Parse this WPScan output into structured format.
-
-Raw WPScan output:
-{raw_output}
-
-Extract the following information:
-1. Target WordPress URL
-2. WordPress version if detected
-3. Whether WordPress was confirmed (not just suspected)
-4. All discovered plugins with names, versions, and any vulnerabilities
-5. All discovered themes with names, versions, and vulnerabilities
-6. Enumerated usernames
-7. All vulnerabilities found (both core and plugins/themes)
-8. Any other interesting findings (exposed files, configs, etc)
-9. Brief summary of the scan (2-3 sentences)
-
-Be accurate and only include information that is actually present in the output.
-If a field has no data, use the default empty value."""
+            parse_prompt_template = PromptProvider.get_agent_prompt("wpscan", "parsing")
+            parse_prompt = parse_prompt_template.format(raw_output=raw_output)
 
             structured_result = parser_llm.invoke(parse_prompt)
 

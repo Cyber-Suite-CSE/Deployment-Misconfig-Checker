@@ -1,0 +1,11 @@
+Based on this analysis:
+{analysis}
+
+Original user request: "{user_request}"
+
+Create a specific, actionable task for the Nikto agent. Be precise about:
+- What URL/host to scan
+- What port to use
+- Any specific scan options needed
+
+Respond with ONLY the task description, nothing else.

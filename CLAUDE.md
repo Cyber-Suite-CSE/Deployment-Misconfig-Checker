@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-agent cybersecurity system using LangChain and Google Gemini for executing real network security commands. The system uses a hierarchical architecture where an orchestrator agent routes requests to specialized tool agents for network scanning, WordPress security testing, web vulnerability assessment, and penetration testing/exploitation.
+Multi-agent cybersecurity system using LangChain with support for multiple LLM providers (Google Gemini and OpenAI) for executing real network security commands. The system uses a hierarchical architecture where an orchestrator agent routes requests to specialized tool agents for network scanning, WordPress security testing, web vulnerability assessment, and penetration testing/exploitation.
 
 ## Architecture
 
@@ -14,6 +14,7 @@ User Request → OrchestratorAgent → [NmapAgent | WPScanAgent | NiktoAgent | M
 
 **Key Components:**
 - `main.py`: CLI interface with colorized output and interactive loop
+- `llm_factory.py`: Centralized LLM initialization supporting Google Gemini and OpenAI providers
 - `agents/orchestrator_agent.py`: Routes requests to appropriate tool agents based on capability analysis
 - `agents/nmap_agent.py`: Specialized agent with intelligent scan splitting, timeout recovery, and result aggregation
 - `agents/wpscan_agent.py`: WordPress security scanning agent for vulnerability and enumeration tasks
@@ -41,9 +42,13 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env and add:
-# - GOOGLE_API_KEY from https://makersuite.google.com/app/apikey
+# - LLM_PROVIDER: "google_genai" (default) or "openai"
+# - GOOGLE_API_KEY from https://makersuite.google.com/app/apikey (if using Google)
+# - OPENAI_API_KEY from https://platform.openai.com/api-keys (if using OpenAI)
 # - MSF_PASSWORD for Metasploit RPC authentication
 ```
+
+See `LLM_PROVIDER_GUIDE.md` for detailed LLM provider configuration.
 
 ### Check Dependencies
 ```bash

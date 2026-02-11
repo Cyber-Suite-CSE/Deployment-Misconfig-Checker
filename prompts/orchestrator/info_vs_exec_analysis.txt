@@ -1,0 +1,8 @@
+Determine if this is an INFORMATION query or EXECUTION request:
+
+User request: "{user_request}"
+
+An INFORMATION query asks about capabilities, features, or how to use the system.
+An EXECUTION request wants to actually run tools to scan, test, or exploit something.
+
+Respond with ONLY one word: INFO or EXEC

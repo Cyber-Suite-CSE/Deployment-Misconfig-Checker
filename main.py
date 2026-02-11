@@ -13,18 +13,21 @@ from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
 from tools.metasploit_tool import validate_metasploit_connection
+from llm_factory import get_current_provider
 
 init(autoreset=True)
 
 
 def print_banner():
-    """Print welcome banner with execution emphasis"""
+    """Print welcome banner with execution emphasis and LLM provider"""
+    provider = get_current_provider()
+    provider_display = "Google Gemini" if provider == "google_genai" else "OpenAI"
     banner = f"""
 {Fore.CYAN}╔══════════════════════════════════════════════════════════════╗
-║  {Fore.YELLOW}Multi-Agent Cybersecurity {Fore.RED}EXECUTION{Fore.YELLOW} System{Fore.CYAN}                 ║
-║  {Fore.GREEN}Powered by LangChain & Gemini{Fore.CYAN}                              ║
-║  {Fore.MAGENTA}⚡ EXECUTES REAL COMMANDS - USE IN CONTAINER ⚡{Fore.CYAN}            ║
-╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
+ ║  {Fore.YELLOW}Multi-Agent Cybersecurity {Fore.RED}EXECUTION{Fore.YELLOW} System{Fore.CYAN}                 ║
+ ║  {Fore.GREEN}Powered by LangChain & {provider_display}{Fore.CYAN}                              ║
+ ║  {Fore.MAGENTA}⚡ EXECUTES REAL COMMANDS - USE IN CONTAINER ⚡{Fore.CYAN}            ║
+ ╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
     """
     print(banner)
 
@@ -88,11 +91,26 @@ def main():
     # Load environment variables
     load_dotenv()
 
-    # Check for API key
-    if not os.getenv("GOOGLE_API_KEY"):
-        print(f"{Fore.RED}Error: GOOGLE_API_KEY not found{Style.RESET_ALL}")
-        print("Please create a .env file with:")
-        print(f"{Fore.YELLOW}GOOGLE_API_KEY=your_api_key_here{Style.RESET_ALL}")
+    # Check for appropriate API key based on provider
+    provider = os.getenv("LLM_PROVIDER", "google_genai").lower()
+    
+    if provider == "openai":
+        if not os.getenv("OPENAI_API_KEY"):
+            print(f"{Fore.RED}Error: OPENAI_API_KEY not found{Style.RESET_ALL}")
+            print("Please create a .env file with:")
+            print(f"{Fore.YELLOW}LLM_PROVIDER=openai{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}OPENAI_API_KEY=your_openai_api_key_here{Style.RESET_ALL}")
+            sys.exit(1)
+    elif provider == "google_genai":
+        if not os.getenv("GOOGLE_API_KEY"):
+            print(f"{Fore.RED}Error: GOOGLE_API_KEY not found{Style.RESET_ALL}")
+            print("Please create a .env file with:")
+            print(f"{Fore.YELLOW}LLM_PROVIDER=google_genai{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}GOOGLE_API_KEY=your_gemini_api_key_here{Style.RESET_ALL}")
+            sys.exit(1)
+    else:
+        print(f"{Fore.RED}Error: Invalid LLM_PROVIDER: {provider}{Style.RESET_ALL}")
+        print("Supported providers: 'google_genai', 'openai'")
         sys.exit(1)
 
     print(f"{Fore.CYAN}Checking system requirements...{Style.RESET_ALL}")
