@@ -51,16 +51,9 @@ services:
     container_name: misconfig-checker
     restart: unless-stopped
     ports:
-      - "${PORT}:${PORT}"
-    environment:
-      - PORT=${PORT}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - MSF_SERVER=metasploit
-      - MSF_PORT=55553
-      - MSF_PASSWORD=${MSF_PASSWORD:-msf}
-      - MSF_SSL=true
+      - "8002:8002"
+    env_file:
+      - ./env/misconfig-service/.env
     depends_on:
       - metasploit
     networks:

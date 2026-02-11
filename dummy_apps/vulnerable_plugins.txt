@@ -1,0 +1,5 @@
+# Vulnerable WordPress Plugins
+# Format: PLUGIN_NAME|VERSION|DOWNLOAD_URL|CVE_ID
+# Lines starting with # are comments
+
+wp-file-manager|6.0|https://plugins.trac.wordpress.org/export/HEAD/wp-file-manager/tags/6.0/wp-file-manager-6.O.zip|CVE-2020-25213
