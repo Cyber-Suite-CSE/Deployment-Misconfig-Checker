@@ -8,7 +8,7 @@ services:
     container_name: cyber-suite-api-gateway
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     env_file:
       - ./env/api-gateway/.env
     networks:
@@ -22,25 +22,14 @@ services:
     restart: unless-stopped
     env_file:
       - ./env/dashboard/.env
+    ports:
+      - "3000:3000"
     depends_on:
       - api-gateway
     networks:
       - cyber-net
 
-  dashboard-nginx:
-    image: nginx:alpine
-    container_name: cyber-suite-dashboard-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./certs:/etc/nginx/certs
-    depends_on:
-      - dashboard
-    networks:
-      - cyber-net
+
 
   # --- Misconfig Checker Services ---
 
@@ -68,7 +57,7 @@ services:
     env_file:
       - ./env/misconfig-service/.env
     entrypoint: /usr/src/metasploit-framework/msfrpcd
-    command: -P ${MSF_PASSWORD:-msf} -p 55553 -n -f -a 0.0.0.0
+    command: -P ${MSF_PASSWORD} -p 55553 -n -f -a 0.0.0.0
     networks:
       - cyber-net
 

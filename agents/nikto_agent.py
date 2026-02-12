@@ -113,22 +113,39 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
                 print(
                     f"{Fore.YELLOW}[NIKTO Agent] Attempting direct tool execution...{Style.RESET_ALL}"
                 )
+                
+                request_lower = request.lower()
+                
+                # Check for explicit URLs
+                url_pattern = r"https?://[^\s]+"
+                urls = re.findall(url_pattern, request)
+                
+                # Check for domain-like strings (e.g., example.com)
+                domain_pattern = r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b"
+                domains = re.findall(domain_pattern, request)
 
-                if (
-                    "scan" in request.lower()
-                    or "web" in request.lower()
-                    or "http" in request.lower()
-                ):
-                    url_pattern = r"https?://[^\s]+"
-                    urls = re.findall(url_pattern, request)
-                    if urls:
-                        fallback_result = execute_nikto(f"nikto -h {urls[0]}")
-                    elif "help" in request.lower():
-                        fallback_result = execute_nikto("nikto -Help")
+                if urls:
+                    fallback_result = execute_nikto(f"nikto -h {urls[0]}")
+                    executed = True
+                elif domains:
+                    fallback_result = execute_nikto(f"nikto -h {domains[0]}")
+                    executed = True
+                elif "help" in request_lower:
+                    fallback_result = execute_nikto("nikto -Help")
+                    executed = True
+                elif "scan" in request_lower or "check" in request_lower:
+                     # Attempt to find IP or anything looking like a target
+                    ip_pattern = r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+                    ips = re.findall(ip_pattern, request)
+                    if ips:
+                        fallback_result = execute_nikto(f"nikto -h {ips[0]}")
+                        executed = True
                     else:
                         fallback_result = execute_nikto("nikto -Help")
+                        executed = False # Help alone doesn't count as execution
                 else:
                     fallback_result = execute_nikto("nikto -Help")
+                    executed = False
 
                 content = f"Direct execution result:\n{fallback_result}"
 
@@ -143,7 +160,6 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
                 "success": True,
                 "result": content,
                 "request": request,
-                # "executed": "[DEBUG]" in content or "Direct execution" in content
                 "executed": executed,
             }
 
