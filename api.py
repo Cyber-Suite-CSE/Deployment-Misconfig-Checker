@@ -1,6 +1,7 @@
 import os
 import uuid
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -37,6 +38,23 @@ class JobStatusResponse(BaseModel):
     error: Optional[str] = None
 
 
+class JobSummary(BaseModel):
+    job_id: str
+    domain: str
+    status: str
+    created_at: str
+    has_results: bool
+    error: Optional[str] = None
+
+
+class PaginatedJobsResponse(BaseModel):
+    jobs: List[JobSummary]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 def log_execution_step(job_id: str, step_data: Dict[str, Any]):
     """
     Callback to log execution steps in real-time to the job store.
@@ -46,6 +64,108 @@ def log_execution_step(job_id: str, step_data: Dict[str, Any]):
         if "execution_history" not in jobs[job_id]:
             jobs[job_id]["execution_history"] = []
         jobs[job_id]["execution_history"].append(step_data)
+
+
+def _filter_jobs(
+    jobs_dict: Dict[str, Dict[str, Any]],
+    status: Optional[str] = None,
+    domain_search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Filter jobs by status, domain, and date range.
+
+    Args:
+        jobs_dict: Dictionary of all jobs
+        status: Optional status filter (pending, running, completed, failed)
+        domain_search: Optional domain substring search (case-insensitive)
+        date_from: Optional ISO 8601 date string for start of range
+        date_to: Optional ISO 8601 date string for end of range
+
+    Returns:
+        List of filtered jobs
+    """
+    valid_statuses = {"pending", "running", "completed", "failed"}
+
+    if status and status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{status}'. Valid values: {', '.join(sorted(valid_statuses))}",
+        )
+
+    filtered = []
+
+    for job in jobs_dict.values():
+        job_date_str = job.get("created_at", "")
+
+        if status and job["status"] != status:
+            continue
+
+        if domain_search:
+            if domain_search.lower() not in job["domain"].lower():
+                continue
+
+        if date_from or date_to:
+            try:
+                job_date = datetime.fromisoformat(job_date_str)
+            except (ValueError, TypeError):
+                continue
+
+            if date_from:
+                try:
+                    from_date = datetime.fromisoformat(date_from)
+                    if job_date < from_date:
+                        continue
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid date_from format: {date_from}. Use ISO 8601 format (e.g., 2024-01-01T00:00:00)",
+                    )
+
+            if date_to:
+                try:
+                    to_date = datetime.fromisoformat(date_to)
+                    if job_date > to_date:
+                        continue
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid date_to format: {date_to}. Use ISO 8601 format (e.g., 2024-12-31T23:59:59)",
+                    )
+
+        filtered.append(job)
+
+    return filtered
+
+
+def _paginate_and_sort_jobs(
+    jobs_list: List[Dict[str, Any]],
+    page: int,
+    page_size: int,
+) -> tuple:
+    """
+    Sort jobs by created_at descending (newest first) and paginate.
+
+    Args:
+        jobs_list: List of jobs to paginate
+        page: Page number (1-indexed)
+        page_size: Number of items per page
+
+    Returns:
+        Tuple of (paginated_jobs, total_count, total_pages)
+    """
+    sorted_jobs = sorted(jobs_list, key=lambda j: j.get("created_at", ""), reverse=True)
+
+    total = len(sorted_jobs)
+    total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+
+    start = (page - 1) * page_size
+    end = start + page_size
+
+    paginated = sorted_jobs[start:end]
+
+    return paginated, total, total_pages
 
 
 def run_scan_job(job_id: str, domain: str):
@@ -118,9 +238,7 @@ async def submit_scan(request: ScanRequest, background_tasks: BackgroundTasks):
         "domain": request.domain,
         "status": "pending",
         "execution_history": [],
-        "created_at": os.getenv(
-            "Start_Time", ""
-        ),  # Just as a placeholder or use datetime
+        "created_at": datetime.utcnow().isoformat() + "Z",
     }
 
     background_tasks.add_task(run_scan_job, job_id, request.domain)
@@ -147,3 +265,65 @@ async def get_job_status(job_id: str):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/jobs", response_model=PaginatedJobsResponse)
+async def list_jobs(
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[str] = None,
+    domain_search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    """
+    List all scan jobs with pagination, filtering, and sorting.
+
+    Query Parameters:
+    - page: Page number (default: 1, min: 1)
+    - page_size: Items per page (default: 20, min: 1, max: 100)
+    - status: Filter by status (pending, running, completed, failed)
+    - domain_search: Search domains by substring (case-insensitive)
+    - date_from: Filter by creation date from (ISO 8601 format)
+    - date_to: Filter by creation date to (ISO 8601 format)
+
+    Jobs are sorted by created_at descending (newest first).
+    """
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 20
+
+    filtered_jobs = _filter_jobs(
+        jobs,
+        status=status,
+        domain_search=domain_search,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    paginated_jobs, total, total_pages = _paginate_and_sort_jobs(
+        filtered_jobs,
+        page,
+        page_size,
+    )
+
+    job_summaries = [
+        JobSummary(
+            job_id=j["job_id"],
+            domain=j["domain"],
+            status=j["status"],
+            created_at=j["created_at"],
+            has_results=bool(j.get("scan_results")),
+            error=j.get("error"),
+        )
+        for j in paginated_jobs
+    ]
+
+    return PaginatedJobsResponse(
+        jobs=job_summaries,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )

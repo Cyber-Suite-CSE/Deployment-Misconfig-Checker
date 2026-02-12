@@ -33,4 +33,4 @@ COPY . .
 EXPOSE 8003
 
 # Run FastAPI app
-CMD ["sh", "-c", "uvicorn api:app --host 0.0.0.0 --port 8002"]
+CMD ["sh", "-c", "uvicorn api:app --host 0.0.0.0 --port 8003"]
