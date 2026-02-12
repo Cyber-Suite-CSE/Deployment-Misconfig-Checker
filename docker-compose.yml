@@ -65,6 +65,8 @@ services:
       - "55553:55553"
     environment:
       - MSF_DATABASE_CONFIG=/usr/share/metasploit-framework/config/database.yml
+    env_file:
+      - ./env/misconfig-service/.env
     entrypoint: /usr/src/metasploit-framework/msfrpcd
     command: -P ${MSF_PASSWORD:-msf} -p 55553 -n -f -a 0.0.0.0
     networks:

@@ -97,6 +97,6 @@ if __name__ == "__main__":
         test_jobs_endpoint()
     except requests.exceptions.ConnectionError:
         print("\nError: Could not connect to API. Is the server running?")
-        print("Start the server with: uvicorn api:app --reload")
+        print("Start the server with: uvicorn backend.api:app --reload")
     except Exception as e:
         print(f"\nError: {e}")

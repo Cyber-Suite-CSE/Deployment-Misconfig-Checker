@@ -1,5 +1,38 @@
 # API Endpoint Documentation
 
+## Architecture
+
+The API is built using FastAPI and uses a SQLite database for persistent job storage.
+
+### File Structure
+
+```
+Deployment-Misconfig-Checker/
+├── backend/
+│   ├── __init__.py         # Package marker
+│   ├── api.py              # FastAPI application and endpoints
+│   ├── database.py         # SQLite database provider
+│   └── jobs.db             # Database file (auto-created)
+```
+
+### Database
+
+- **Type**: SQLite
+- **Location**: `backend/jobs.db`
+- **Persistence**: Jobs are stored persistently and survive server restarts
+- **Schema**: Single `jobs` table with indexes for performance
+- **Serialization**: Complex fields (execution_history, scan_results) stored as JSON
+
+### Starting the Server
+
+```bash
+# Development (with auto-reload)
+uvicorn backend.api:app --reload
+
+# Production
+uvicorn backend.api:app --host 0.0.0.0 --port 8003
+```
+
 ## List Jobs (GET /api/jobs)
 
 Retrieves a paginated list of all scan jobs with filtering and sorting capabilities.

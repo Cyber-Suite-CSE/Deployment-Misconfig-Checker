@@ -6,3 +6,4 @@ docs
 .claude
 
 certs/
+backend/jobs.db
