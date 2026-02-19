@@ -41,25 +41,10 @@ services:
       - "8003:8003"
     env_file:
       - ./env/misconfig-service/.env
-    depends_on:
-      - metasploit
     networks:
       - cyber-net
 
-  metasploit:
-    image: metasploitframework/metasploit-framework
-    container_name: metasploit
-    restart: unless-stopped
-    ports:
-      - "55553:55553"
-    environment:
-      - MSF_DATABASE_CONFIG=/usr/share/metasploit-framework/config/database.yml
-    env_file:
-      - ./env/misconfig-service/.env
-    entrypoint: /usr/src/metasploit-framework/msfrpcd
-    command: -P ${MSF_PASSWORD} -p 55553 -n -f -a 0.0.0.0
-    networks:
-      - cyber-net
+
 
 networks:
   cyber-net:

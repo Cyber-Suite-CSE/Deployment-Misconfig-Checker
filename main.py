@@ -12,7 +12,7 @@ from agents.orchestrator_agent import OrchestratorAgent
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
-from tools.metasploit_tool import validate_metasploit_connection
+# from tools.metasploit_tool import validate_metasploit_connection # Disabled
 from llm_factory import get_current_provider
 
 init(autoreset=True)
@@ -118,7 +118,7 @@ def main():
     nmap_installed = validate_nmap_installed()
     wpscan_installed = validate_wpscan_installed()
     nikto_installed = validate_nikto_installed()
-    metasploit_connected = validate_metasploit_connection()
+    metasploit_connected = False # validate_metasploit_connection()
 
     if not nmap_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: nmap not detected{Style.RESET_ALL}")
@@ -145,15 +145,9 @@ def main():
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nikto")
         print(f"  {Fore.GREEN}CPAN:{Style.RESET_ALL} cpan install NIKTO")
 
-    if not metasploit_connected:
-        print(f"\n{Fore.YELLOW}⚠️  Warning: Metasploit RPC not connected{Style.RESET_ALL}")
-        print(f"{Fore.RED}This system has REAL EXPLOITATION CAPABILITIES!{Style.RESET_ALL}")
-        print("\nStart Metasploit RPC:")
-        print(f"  {Fore.GREEN}Start RPC:{Style.RESET_ALL} msfrpcd -P <password> -p 55553")
-        print(f"  {Fore.GREEN}Set .env:{Style.RESET_ALL} MSF_PASSWORD=<password>")
-        print(f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker run -p 55553:55553 metasploit/metasploit-framework")
 
-    if not nmap_installed or not wpscan_installed or not nikto_installed or not metasploit_connected:
+
+    if not nmap_installed or not wpscan_installed or not nikto_installed:
         print(f"\n{Fore.YELLOW}Or run in a container with tools pre-installed{Style.RESET_ALL}")
 
         response = input(f"\n{Fore.CYAN}Continue anyway? (y/n): {Style.RESET_ALL}")

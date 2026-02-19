@@ -7,7 +7,10 @@ from colorama import init, Fore, Style
 from agents.nmap_agent import NmapAgent
 from agents.wpscan_agent import WpscanAgent
 from agents.nikto_agent import NiktoAgent
-from agents.metasploit_passive_agent import MetasploitPassiveAgent
+from agents.nmap_agent import NmapAgent
+from agents.wpscan_agent import WpscanAgent
+from agents.nikto_agent import NiktoAgent
+# Metasploit agent removed for lightweight mode
 from llm_factory import create_llm
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +33,7 @@ class OrchestratorAgent:
             "nmap": NmapAgent(llm=self.llm),
             "wpscan": WpscanAgent(llm=self.llm),
             "nikto": NiktoAgent(llm=self.llm),
-            "metasploit": MetasploitPassiveAgent(llm=self.llm),
+            # "metasploit": MetasploitPassiveAgent(llm=self.llm), # Disabled
         }
 
         self.tool_capabilities = {
@@ -57,15 +60,6 @@ class OrchestratorAgent:
                 "server misconfiguration identification",
                 "outdated software detection",
                 "common web application vulnerabilities",
-            ],
-            "metasploit": [
-                "exploit reconnaissance",
-                "vulnerability analysis",
-                "exploit database search",
-                "exploit information gathering",
-                "CVE to exploit mapping",
-                "passive security assessment",
-                "exploit availability checking",
             ],
         }
 
