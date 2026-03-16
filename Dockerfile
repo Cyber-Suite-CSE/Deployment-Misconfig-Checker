@@ -46,8 +46,5 @@ RUN apk add --no-cache \
     # Cleanup git history from COPY . .
     && rm -rf .git .github
 
-# Expose API port
-EXPOSE 8003
-
 # Run FastAPI app
-CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD uvicorn backend.api:app --host 0.0.0.0 --port $PORT
