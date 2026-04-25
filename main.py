@@ -6,9 +6,11 @@ A hierarchical agent system that EXECUTES REAL cybersecurity commands
 
 import os
 import sys
+from typing import Any, Dict
 from dotenv import load_dotenv
 from colorama import init, Fore, Style, Back
 from agents.orchestrator_agent import OrchestratorAgent
+from v2.orchestrator import V2DeepOrchestrator
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
@@ -22,10 +24,12 @@ def print_banner():
     """Print welcome banner with execution emphasis and LLM provider"""
     provider = get_current_provider()
     provider_display = "Google Gemini" if provider == "google_genai" else "OpenAI"
+    orchestrator_mode = get_orchestrator_mode().upper()
     banner = f"""
 {Fore.CYAN}╔══════════════════════════════════════════════════════════════╗
  ║  {Fore.YELLOW}Multi-Agent Cybersecurity {Fore.RED}EXECUTION{Fore.YELLOW} System{Fore.CYAN}                 ║
  ║  {Fore.GREEN}Powered by LangChain & {provider_display}{Fore.CYAN}                              ║
+ ║  {Fore.BLUE}Orchestrator Mode: {orchestrator_mode:<40}{Fore.CYAN}║
  ║  {Fore.MAGENTA}⚡ EXECUTES REAL COMMANDS - USE IN CONTAINER ⚡{Fore.CYAN}            ║
  ╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
     """
@@ -84,6 +88,42 @@ def verify_execution_in_response(response: str) -> bool:
         if indicator in response:
             return True
     return False
+
+
+def get_orchestrator_mode() -> str:
+    """Get the configured orchestrator mode."""
+    return os.getenv("ORCHESTRATOR_VERSION", "v2").lower()
+
+
+def create_orchestrator():
+    """Create the configured orchestrator implementation."""
+    mode = get_orchestrator_mode()
+
+    if mode == "v1":
+        print(f"{Fore.CYAN}Using classic orchestrator (v1){Style.RESET_ALL}")
+        return OrchestratorAgent()
+
+    if mode == "v2":
+        print(f"{Fore.CYAN}Using Deep Agents orchestrator (v2){Style.RESET_ALL}")
+        return V2DeepOrchestrator()
+
+    raise ValueError(
+        f"Invalid ORCHESTRATOR_VERSION: {mode}. Supported values: 'v1', 'v2'."
+    )
+
+
+def print_progress_step(step_data: Dict[str, Any]):
+    """Render real-time workflow progress from orchestrator callbacks."""
+    agent = step_data.get("agent", "unknown")
+    step = step_data.get("step", "?")
+    target = step_data.get("target", "unknown")
+    structured = step_data.get("structured_data", {}) or {}
+    summary = structured.get("scan_summary", "Step completed")
+
+    print(
+        f"{Fore.BLUE}[Progress] Step {step}: {agent} completed for {target}{Style.RESET_ALL}"
+    )
+    print(f"{Fore.WHITE}Summary: {summary}{Style.RESET_ALL}")
 
 
 def main():
@@ -162,7 +202,7 @@ def main():
     # Initialize orchestrator
     try:
         print(f"{Fore.CYAN}Initializing execution system...{Style.RESET_ALL}")
-        orchestrator = OrchestratorAgent()
+        orchestrator = create_orchestrator()
         print(f"{Fore.GREEN}✓ Execution system ready!{Style.RESET_ALL}\n")
     except Exception as e:
         print(f"{Fore.RED}Failed to initialize: {e}{Style.RESET_ALL}")
@@ -201,10 +241,18 @@ def main():
             print(f"{Fore.CYAN}{'─'*60}{Style.RESET_ALL}")
 
             # Execute through orchestrator
-            response = orchestrator.process_user_request(user_input)
+            workflow_result = orchestrator.run_workflow(
+                user_input,
+                progress_callback=print_progress_step,
+            )
+            response = workflow_result.get("response", "")
 
             # Verify execution
-            if verify_execution_in_response(response):
+            if workflow_result.get("type") == "information":
+                print(f"\n{Fore.GREEN}✓ INFORMATION REQUEST ANSWERED{Style.RESET_ALL}")
+            elif workflow_result.get("execution_history"):
+                print(f"\n{Fore.GREEN}✓ COMMAND EXECUTED SUCCESSFULLY{Style.RESET_ALL}")
+            elif verify_execution_in_response(response):
                 print(f"\n{Fore.GREEN}✓ COMMAND EXECUTED SUCCESSFULLY{Style.RESET_ALL}")
             else:
                 print(f"\n{Fore.YELLOW}⚠️  No execution detected in response{Style.RESET_ALL}")

@@ -1,9 +1,5 @@
 import os
 from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain.tools.render import render_text_description
 from langgraph.prebuilt import create_react_agent as create_langgraph_agent
 from colorama import init, Fore, Style
 import sys
@@ -11,7 +7,7 @@ import re
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.nmap_tool import execute_nmap
-from models.structured_results import NmapResult, PortInfo
+from models.structured_results import NmapResult
 from llm_factory import create_llm
 from prompts import PromptProvider
 

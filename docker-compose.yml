@@ -1,33 +1,33 @@
 services:
   # --- Infrastructure ---
   
-  api-gateway:
-    build:
-      context: ../Cyber-Suite-API-Gateway
-      dockerfile: Dockerfile
-    container_name: cyber-suite-api-gateway
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    env_file:
-      - ./env/api-gateway/.env
-    networks:
-      - cyber-net
+  # api-gateway:
+  #   build:
+  #     context: ../Cyber-Suite-API-Gateway
+  #     dockerfile: Dockerfile
+  #   container_name: cyber-suite-api-gateway
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3001:3000"
+  #   env_file:
+  #     - ./env/api-gateway/.env
+  #   networks:
+  #     - cyber-net
 
-  dashboard:
-    build:
-      context: ../Cyber-Suite-Dashboard
-      dockerfile: Dockerfile.dev
-    container_name: cyber-suite-dashboard
-    restart: unless-stopped
-    env_file:
-      - ./env/dashboard/.env
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api-gateway
-    networks:
-      - cyber-net
+  # dashboard:
+  #   build:
+  #     context: ../Cyber-Suite-Dashboard
+  #     dockerfile: Dockerfile.dev
+  #   container_name: cyber-suite-dashboard
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ./env/dashboard/.env
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - api-gateway
+  #   networks:
+  #     - cyber-net
 
 
 
@@ -40,7 +40,7 @@ services:
     ports:
       - "8003:8003"
     env_file:
-      - ./env/misconfig-service/.env
+      - ./.env
     networks:
       - cyber-net
 

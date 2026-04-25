@@ -1,12 +1,8 @@
 import os
 import sys
 from typing import Dict, Any, List, Optional
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 from colorama import init, Fore, Style
-from agents.nmap_agent import NmapAgent
-from agents.wpscan_agent import WpscanAgent
-from agents.nikto_agent import NiktoAgent
 from agents.nmap_agent import NmapAgent
 from agents.wpscan_agent import WpscanAgent
 from agents.nikto_agent import NiktoAgent
