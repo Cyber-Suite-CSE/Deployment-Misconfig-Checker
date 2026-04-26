@@ -45,7 +45,10 @@ def list_available_exploits(vulnerability_keywords: str, max_results: int = 10) 
         
         print(f"{Fore.CYAN}[DEBUG] Searching for exploits matching: {vulnerability_keywords}{Style.RESET_ALL}")
         print(f"KEYWORD LIST: {vulnerability_keywords}\n")
-        search_results = client.modules.search(vulnerability_keywords) or []
+        # Use the raw RPC call so this works on pymetasploit3 1.0.3 (which lacks
+        # ModuleManager.search) as well as 1.0.6+. The underlying module.search
+        # endpoint has been stable in MSF for years.
+        search_results = client.call('module.search', [vulnerability_keywords]) or []
 
         print(f"{Fore.MAGENTA}[DEBUG] Raw modules.search() output:{Style.RESET_ALL}")
         print(json.dumps(search_results[:3], indent=2, default=str))
