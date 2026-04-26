@@ -2,11 +2,10 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Copy requirements FIRST to use them in the single run command
-COPY requirements.txt .
-COPY . .
+# Copy dependency manifest first so code changes don't bust the tool/dependency cache
+COPY requirements.txt ./
 
-# Install EVERYTHING in one RUN command to minimize layers and ensure cleanup
+# Install OS tools and Python deps in a cache-friendly layer
 RUN apk add --no-cache \
     # Runtime Dependencies
     nmap \
@@ -57,9 +56,10 @@ RUN apk add --no-cache \
     # Cleanup Build Deps
     && apk del .build-deps \
     # Cleanup Caches and Temp Files
-    && rm -rf /root/.cache /var/cache/apk/* /opt/nikto/.git /tmp/nikto-version.txt /tmp/masscan-version.txt \
-    # Cleanup git history from COPY . .
-    && rm -rf .git .github
+    && rm -rf /root/.cache /var/cache/apk/* /opt/nikto/.git /tmp/nikto-version.txt /tmp/masscan-version.txt
+
+# Copy application source last so normal code edits reuse the dependency/tool cache
+COPY . .
 
 # Run FastAPI app
 CMD uvicorn backend.api:app --host 0.0.0.0 --port $PORT

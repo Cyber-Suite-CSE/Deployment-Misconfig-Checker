@@ -9,7 +9,12 @@ from v2.prompts import (
     SERVICE_DISCOVER_SYSTEM_PROMPT,
     WEB_SCAN_SYSTEM_PROMPT,
 )
-from v2.tools import execute_masscan, search_metasploit_for_recon
+from v2.tools import (
+    execute_masscan,
+    get_exploit_details,
+    list_available_exploits,
+    search_exploits_by_cve,
+)
 
 
 class BaseSubagentSpec:
@@ -59,9 +64,9 @@ class WebScanSubagent(BaseSubagentSpec):
 
 class ExploitReconSubagent(BaseSubagentSpec):
     name = "exploit_recon_agent"
-    description = "Performs recon-only exploitability correlation using Metasploit search and matching."
+    description = "Performs recon-only exploitability correlation using passive Metasploit search, CVE matching, and exploit detail lookup."
     system_prompt = EXPLOIT_RECON_SYSTEM_PROMPT
     response_format = ExploitReconResult
 
     def get_tools(self):
-        return [search_metasploit_for_recon]
+        return [list_available_exploits, search_exploits_by_cve, get_exploit_details]

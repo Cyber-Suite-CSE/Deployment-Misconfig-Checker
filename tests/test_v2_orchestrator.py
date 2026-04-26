@@ -64,6 +64,7 @@ deepagents_backends_module.StateBackend = FakeStateBackend
 sys.modules.setdefault("deepagents.backends", deepagents_backends_module)
 
 from v2.orchestrator import V2DeepOrchestrator
+from v2.models import WebScanResult
 from v2.parsers import merge_service_discovery_results, parse_masscan_output
 from v2.tools.masscan_tool import execute_masscan, validate_masscan_installed
 
@@ -340,6 +341,32 @@ class V2OrchestratorTests(unittest.TestCase):
         )
         self.assertEqual(parsed["target"], "10.0.0.5")
         self.assertEqual(len(parsed["open_ports"]), 2)
+
+    def test_web_scan_result_normalizes_string_nikto_vulnerabilities(self):
+        result = WebScanResult.model_validate(
+            {
+                "target": "http://192.168.48.4",
+                "wordpress_detected": False,
+                "nikto_result": {
+                    "target": "http://192.168.48.4",
+                    "port": 80,
+                    "server_info": "Apache",
+                    "vulnerabilities": [
+                        "Apache/2.4.57 appears to be outdated",
+                        "PHP/8.2.17 appears to be outdated",
+                    ],
+                    "misconfigurations": [],
+                },
+                "vulnerabilities": [],
+                "misconfigurations": [],
+            }
+        )
+        self.assertTrue(result.scan_summary)
+        self.assertTrue(result.nikto_result.scan_summary)
+        self.assertEqual(
+            result.nikto_result.vulnerabilities[0].description,
+            "Apache/2.4.57 appears to be outdated",
+        )
 
     def test_service_discovery_merge_normalizes_web_targets(self):
         merged = merge_service_discovery_results(
