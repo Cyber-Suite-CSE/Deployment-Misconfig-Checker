@@ -14,6 +14,7 @@ from v2.orchestrator import V2DeepOrchestrator
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
+from v2.tools.masscan_tool import validate_masscan_installed
 # from tools.metasploit_tool import validate_metasploit_connection # Disabled
 from llm_factory import get_current_provider
 
@@ -158,6 +159,7 @@ def main():
     nmap_installed = validate_nmap_installed()
     wpscan_installed = validate_wpscan_installed()
     nikto_installed = validate_nikto_installed()
+    masscan_installed = validate_masscan_installed()
     metasploit_connected = False # validate_metasploit_connection()
 
     if not nmap_installed:
@@ -184,6 +186,13 @@ def main():
         print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nikto")
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nikto")
         print(f"  {Fore.GREEN}CPAN:{Style.RESET_ALL} cpan install NIKTO")
+
+    if not masscan_installed:
+        print(f"\n{Fore.YELLOW}⚠️  Warning: masscan not detected{Style.RESET_ALL}")
+        print(f"{Fore.RED}Deep service discovery will fall back to nmap only{Style.RESET_ALL}")
+        print("\nInstall masscan:")
+        print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install masscan")
+        print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install masscan")
 
 
 

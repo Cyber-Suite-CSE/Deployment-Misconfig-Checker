@@ -65,7 +65,7 @@ sys.modules.setdefault("deepagents.backends", deepagents_backends_module)
 
 from v2.orchestrator import V2DeepOrchestrator
 from v2.parsers import merge_service_discovery_results, parse_masscan_output
-from v2.tools.masscan_tool import execute_masscan
+from v2.tools.masscan_tool import execute_masscan, validate_masscan_installed
 
 
 def subagent_message(name, payload, task):
@@ -324,6 +324,15 @@ class V2OrchestratorTests(unittest.TestCase):
         with patch("v2.tools.masscan_tool.validate_masscan_installed", return_value=False):
             result = execute_masscan("masscan 10.0.0.0/24 -p80")
         self.assertIn("MASSCAN_NOT_INSTALLED", result)
+
+    def test_masscan_validate_accepts_version_banner_with_nonzero_exit(self):
+        fake_result = SimpleNamespace(
+            returncode=1,
+            stdout="Masscan version 1.3.2\n",
+            stderr="",
+        )
+        with patch("v2.tools.masscan_tool.subprocess.run", return_value=fake_result):
+            self.assertTrue(validate_masscan_installed())
 
     def test_masscan_parser_extracts_open_ports(self):
         parsed = parse_masscan_output(

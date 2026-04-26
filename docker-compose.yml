@@ -42,10 +42,12 @@ services:
     env_file:
       - ./.env
     networks:
-      - cyber-net
+      - cyber-network
 
 
 
 networks:
-  cyber-net:
+  cyber-network:
     driver: bridge
+    external:
+      true

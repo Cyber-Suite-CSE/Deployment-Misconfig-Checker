@@ -11,6 +11,8 @@ services:
     command: --innodb-flush-method=fsync
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - cyber-network
 
   wordpress:
     image: vuln-wordpress:latest
@@ -25,6 +27,8 @@ services:
     volumes:
       - wp_data:/var/www/html
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
+    networks:
+      - cyber-network
 
 volumes:
   db_data:
@@ -33,3 +37,5 @@ volumes:
 networks:
   cyber-network:
     driver: bridge
+    external:
+      true

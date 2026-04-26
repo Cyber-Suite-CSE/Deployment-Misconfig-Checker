@@ -29,7 +29,8 @@ def validate_masscan_installed() -> bool:
             timeout=5,
             check=False,
         )
-        return result.returncode == 0
+        output = f"{result.stdout}\n{result.stderr}"
+        return result.returncode == 0 or "Masscan version" in output
     except Exception:
         return False
 
