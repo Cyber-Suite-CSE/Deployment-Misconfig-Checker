@@ -12,7 +12,7 @@ from agents.orchestrator_agent import OrchestratorAgent
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
-# from tools.metasploit_tool import validate_metasploit_connection # Disabled
+from tools.metasploit_tool import validate_metasploit_connection
 from llm_factory import get_current_provider
 
 init(autoreset=True)
@@ -77,7 +77,7 @@ def verify_execution_in_response(response: str) -> bool:
         "RAW STDOUT",
         "RAW STDERR",
         "Return code:",
-        "Direct execution result:"
+        "Direct execution result:",
     ]
 
     for indicator in execution_indicators:
@@ -93,20 +93,24 @@ def main():
 
     # Check for appropriate API key based on provider
     provider = os.getenv("LLM_PROVIDER", "google_genai").lower()
-    
+
     if provider == "openai":
         if not os.getenv("OPENAI_API_KEY"):
             print(f"{Fore.RED}Error: OPENAI_API_KEY not found{Style.RESET_ALL}")
             print("Please create a .env file with:")
             print(f"{Fore.YELLOW}LLM_PROVIDER=openai{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}OPENAI_API_KEY=your_openai_api_key_here{Style.RESET_ALL}")
+            print(
+                f"{Fore.YELLOW}OPENAI_API_KEY=your_openai_api_key_here{Style.RESET_ALL}"
+            )
             sys.exit(1)
     elif provider == "google_genai":
         if not os.getenv("GOOGLE_API_KEY"):
             print(f"{Fore.RED}Error: GOOGLE_API_KEY not found{Style.RESET_ALL}")
             print("Please create a .env file with:")
             print(f"{Fore.YELLOW}LLM_PROVIDER=google_genai{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}GOOGLE_API_KEY=your_gemini_api_key_here{Style.RESET_ALL}")
+            print(
+                f"{Fore.YELLOW}GOOGLE_API_KEY=your_gemini_api_key_here{Style.RESET_ALL}"
+            )
             sys.exit(1)
     else:
         print(f"{Fore.RED}Error: Invalid LLM_PROVIDER: {provider}{Style.RESET_ALL}")
@@ -114,17 +118,19 @@ def main():
         sys.exit(1)
 
     print(f"{Fore.CYAN}Checking system requirements...{Style.RESET_ALL}")
-    
+
     nmap_installed = validate_nmap_installed()
     wpscan_installed = validate_wpscan_installed()
     nikto_installed = validate_nikto_installed()
-    metasploit_connected = False # validate_metasploit_connection()
+    metasploit_connected = validate_metasploit_connection()
 
     if not nmap_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: nmap not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
         print("\nInstall nmap:")
-        print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nmap")
+        print(
+            f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nmap"
+        )
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nmap")
         print(f"  {Fore.GREEN}Windows:{Style.RESET_ALL} https://nmap.org/download.html")
 
@@ -132,7 +138,9 @@ def main():
         print(f"\n{Fore.YELLOW}⚠️  Warning: wpscan not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
         print("\nInstall wpscan:")
-        print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install wpscan")
+        print(
+            f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install wpscan"
+        )
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install wpscan")
         print(f"  {Fore.GREEN}Ruby Gem:{Style.RESET_ALL} gem install wpscan")
         print(f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker pull wpscanteam/wpscan")
@@ -141,23 +149,38 @@ def main():
         print(f"\n{Fore.YELLOW}⚠️  Warning: nikto not detected{Style.RESET_ALL}")
         print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
         print("\nInstall nikto:")
-        print(f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nikto")
+        print(
+            f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install nikto"
+        )
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nikto")
         print(f"  {Fore.GREEN}CPAN:{Style.RESET_ALL} cpan install NIKTO")
 
-
+    if not metasploit_connected:
+        print(
+            f"\n{Fore.YELLOW}⚠️  Warning: Metasploit RPC not connected{Style.RESET_ALL}"
+        )
+        print(f"{Fore.RED}Exploit reconnaissance will be unavailable!{Style.RESET_ALL}")
+        print("\nStart Metasploit RPC service:")
+        print(f"  {Fore.GREEN}msfrpcd -P your_password -p 55553{Style.RESET_ALL}")
+        print(
+            f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker run -it -p 55553:55553 metasploitframework/metasploit-framework"
+        )
 
     if not nmap_installed or not wpscan_installed or not nikto_installed:
-        print(f"\n{Fore.YELLOW}Or run in a container with tools pre-installed{Style.RESET_ALL}")
+        print(
+            f"\n{Fore.YELLOW}Or run in a container with tools pre-installed{Style.RESET_ALL}"
+        )
 
         response = input(f"\n{Fore.CYAN}Continue anyway? (y/n): {Style.RESET_ALL}")
-        if response.lower() != 'y':
+        if response.lower() != "y":
             sys.exit(0)
 
     # Print banner
     print_banner()
     print(f"{Fore.GREEN}Type 'help' for commands or 'exit' to quit{Style.RESET_ALL}")
-    print(f"{Fore.MAGENTA}System will EXECUTE REAL COMMANDS - Use responsibly!{Style.RESET_ALL}\n")
+    print(
+        f"{Fore.MAGENTA}System will EXECUTE REAL COMMANDS - Use responsibly!{Style.RESET_ALL}\n"
+    )
 
     # Initialize orchestrator
     try:
@@ -172,33 +195,39 @@ def main():
     while True:
         try:
             # Get user input
-            user_input = input(f"\n{Fore.CYAN}╭─[{Fore.YELLOW}CyberExec{Fore.CYAN}]─[{Fore.GREEN}~{Fore.CYAN}]\n╰─{Fore.RED}#{Style.RESET_ALL} ").strip()
+            user_input = input(
+                f"\n{Fore.CYAN}╭─[{Fore.YELLOW}CyberExec{Fore.CYAN}]─[{Fore.GREEN}~{Fore.CYAN}]\n╰─{Fore.RED}#{Style.RESET_ALL} "
+            ).strip()
 
             # Handle commands
             if not user_input:
                 continue
 
-            if user_input.lower() in ['exit', 'quit']:
-                print(f"{Fore.YELLOW}Shutting down execution system...{Style.RESET_ALL}")
+            if user_input.lower() in ["exit", "quit"]:
+                print(
+                    f"{Fore.YELLOW}Shutting down execution system...{Style.RESET_ALL}"
+                )
                 print(f"{Fore.GREEN}Goodbye!{Style.RESET_ALL}")
                 break
 
-            if user_input.lower() in ['help', '?']:
+            if user_input.lower() in ["help", "?"]:
                 print_help()
                 continue
 
-            if user_input.lower() == 'capabilities':
+            if user_input.lower() == "capabilities":
                 print("\n" + orchestrator.get_available_capabilities())
                 continue
 
-            if user_input.lower() == 'clear':
-                os.system('clear' if os.name != 'nt' else 'cls')
+            if user_input.lower() == "clear":
+                os.system("clear" if os.name != "nt" else "cls")
                 print_banner()
                 continue
 
             # Process execution request
-            print(f"\n{Fore.YELLOW}[System] Processing execution request...{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'─'*60}{Style.RESET_ALL}")
+            print(
+                f"\n{Fore.YELLOW}[System] Processing execution request...{Style.RESET_ALL}"
+            )
+            print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")
 
             # Execute through orchestrator
             response = orchestrator.process_user_request(user_input)
@@ -207,15 +236,21 @@ def main():
             if verify_execution_in_response(response):
                 print(f"\n{Fore.GREEN}✓ COMMAND EXECUTED SUCCESSFULLY{Style.RESET_ALL}")
             else:
-                print(f"\n{Fore.YELLOW}⚠️  No execution detected in response{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}The agent may have only provided information{Style.RESET_ALL}")
+                print(
+                    f"\n{Fore.YELLOW}⚠️  No execution detected in response{Style.RESET_ALL}"
+                )
+                print(
+                    f"{Fore.YELLOW}The agent may have only provided information{Style.RESET_ALL}"
+                )
 
-            print(f"{Fore.CYAN}{'─'*60}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")
             print(f"\n{Fore.GREEN}[Response]{Style.RESET_ALL}")
             print(response)
 
         except KeyboardInterrupt:
-            print(f"\n\n{Fore.YELLOW}Interrupted. Type 'exit' to quit.{Style.RESET_ALL}")
+            print(
+                f"\n\n{Fore.YELLOW}Interrupted. Type 'exit' to quit.{Style.RESET_ALL}"
+            )
             continue
         except Exception as e:
             print(f"\n{Fore.RED}Error: {e}{Style.RESET_ALL}")
