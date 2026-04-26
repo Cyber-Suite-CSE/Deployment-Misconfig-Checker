@@ -7,10 +7,7 @@ from colorama import init, Fore, Style
 from agents.nmap_agent import NmapAgent
 from agents.wpscan_agent import WpscanAgent
 from agents.nikto_agent import NiktoAgent
-from agents.nmap_agent import NmapAgent
-from agents.wpscan_agent import WpscanAgent
-from agents.nikto_agent import NiktoAgent
-# Metasploit agent removed for lightweight mode
+from agents.metasploit_passive_agent import MetasploitPassiveAgent
 from llm_factory import create_llm
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,16 +21,30 @@ ORCHESTRATOR_PROMPT = PromptProvider.get_orchestrator_prompt("system")
 class OrchestratorAgent:
     """Main orchestrator agent that routes requests to specialized tool agents"""
 
-    def __init__(self):
-        """Initialize the orchestrator with LLM and tool agents"""
-        self.llm = create_llm(temperature=0.3)
+    def __init__(self, orchestrator_model=None, sub_agent_model=None, temperature=0.3):
+        """Initialize the orchestrator with LLM and tool agents.
 
-        # Initialize tool agents
+        Args:
+            orchestrator_model: Optional model override for the orchestrator's own LLM
+                (e.g. "gpt-4o"). Falls back to provider default when None.
+            sub_agent_model: Optional model override for sub-agent LLMs (e.g. "gpt-4o-mini").
+                Falls back to provider default when None.
+            temperature: Sampling temperature for both LLMs (default 0.3).
+        """
+        self.llm = create_llm(temperature=temperature, model=orchestrator_model)
+
+        # Sub-agents may use a smaller/cheaper model than the orchestrator. When no
+        # override is provided, sub-agents share the orchestrator's LLM (legacy behaviour).
+        if sub_agent_model is not None:
+            sub_agent_llm = create_llm(temperature=temperature, model=sub_agent_model)
+        else:
+            sub_agent_llm = self.llm
+
         self.tool_agents = {
-            "nmap": NmapAgent(llm=self.llm),
-            "wpscan": WpscanAgent(llm=self.llm),
-            "nikto": NiktoAgent(llm=self.llm),
-            # "metasploit": MetasploitPassiveAgent(llm=self.llm), # Disabled
+            "nmap": NmapAgent(llm=sub_agent_llm),
+            "wpscan": WpscanAgent(llm=sub_agent_llm),
+            "nikto": NiktoAgent(llm=sub_agent_llm),
+            "metasploit": MetasploitPassiveAgent(llm=sub_agent_llm),
         }
 
         self.tool_capabilities = {
@@ -60,6 +71,13 @@ class OrchestratorAgent:
                 "server misconfiguration identification",
                 "outdated software detection",
                 "common web application vulnerabilities",
+            ],
+            "metasploit": [
+                "exploit reconnaissance",
+                "exploit module search",
+                "CVE to exploit lookup",
+                "exploit details and metadata",
+                "passive exploitation analysis",
             ],
         }
 

@@ -7,3 +7,4 @@ docs
 
 certs/
 backend/jobs.db
+eval/results/
