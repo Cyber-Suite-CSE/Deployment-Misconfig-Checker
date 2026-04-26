@@ -10,6 +10,10 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from colorama import init, Fore, Style
 
+from tools._proc_runner import run_with_timeout
+
+NIKTO_TIMEOUT_S = int(os.getenv("NIKTO_TIMEOUT", "1200"))
+
 init(autoreset=True)
 
 class NiktoInput(BaseModel):
@@ -83,10 +87,10 @@ def execute_nikto(command: str, safe_mode: bool = True) -> str:
 
         print(f"{Fore.GREEN}[DEBUG] Safety checks passed{Style.RESET_ALL}")
 
-    if not (command.strip().startswith('nikto')):
-        error_msg = "Command must start with 'nikto'"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        return f"Error: {error_msg}"
+    stripped = command.strip()
+    if not stripped.startswith('nikto'):
+        command = f"nikto {stripped}"
+        print(f"{Fore.YELLOW}[DEBUG] Auto-prepended 'nikto' (command was missing binary name){Style.RESET_ALL}")
 
     if '-ask' not in command.lower():
         command = command + ' -ask no'
@@ -97,27 +101,17 @@ def execute_nikto(command: str, safe_mode: bool = True) -> str:
     try:
         print(f"{Fore.YELLOW}[DEBUG] Executing command (standard logging)...{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] Command: {Fore.WHITE}{actual_command}{Style.RESET_ALL}")
-        
-        # Use simple subprocess.run for better compatibility with Docker logs
-        # capture_output=True captures stdout/stderr
-        result = subprocess.run(
-            actual_command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=1200  # Increase timeout to 20 mins for long scans
+
+        stdout, stderr, returncode, timed_out = run_with_timeout(
+            actual_command, timeout=NIKTO_TIMEOUT_S
         )
-        
-        stdout = result.stdout
-        stderr = result.stderr
-        returncode = result.returncode
 
-        # Print output to logs so we can see it in Docker
-        if stdout:
-            print(f"{Fore.WHITE}{stdout}{Style.RESET_ALL}")
-        if stderr:
-             print(f"{Fore.RED}{stderr}{Style.RESET_ALL}")
+        if timed_out:
+            error_msg = f"Command timed out after {NIKTO_TIMEOUT_S} seconds"
+            print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
+            return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
 
+        # stdout/stderr were already streamed to the terminal during execution.
         print(f"{Fore.GREEN}[DEBUG] Command execution completed{Style.RESET_ALL}")
         print(f"{Fore.BLUE}[DEBUG] Return code: {Fore.WHITE}{returncode}{Style.RESET_ALL}")
 
@@ -134,10 +128,6 @@ def execute_nikto(command: str, safe_mode: bool = True) -> str:
 
         return output if output else "No output from command"
 
-    except subprocess.TimeoutExpired:
-        error_msg = "Command timed out after 1200 seconds"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
     except Exception as e:
         error_msg = f"Error executing command: {str(e)}"
         print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")

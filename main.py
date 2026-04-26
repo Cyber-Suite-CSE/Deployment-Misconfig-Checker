@@ -4,13 +4,16 @@ Multi-Agent Cybersecurity System - EXECUTION FOCUSED
 A hierarchical agent system that EXECUTES REAL cybersecurity commands
 """
 
+import atexit
 import os
+import signal
 import sys
 from typing import Any, Dict
 from dotenv import load_dotenv
 from colorama import init, Fore, Style, Back
 from agents.orchestrator_agent import OrchestratorAgent
 from v2.orchestrator import V2DeepOrchestrator
+from tools._proc_runner import active_count, terminate_all
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
@@ -127,10 +130,27 @@ def print_progress_step(step_data: Dict[str, Any]):
     print(f"{Fore.WHITE}Summary: {summary}{Style.RESET_ALL}")
 
 
+def _install_signal_handlers():
+    """Forward Ctrl+C to active subprocesses so scans don't orphan, then re-raise.
+
+    Without this, KeyboardInterrupt would unwind the Python loop while leaving
+    the underlying nmap/nikto/wpscan processes running.
+    """
+    def _handle_sigint(signum, frame):
+        if active_count():
+            print(f"\n{Fore.YELLOW}[Signal] SIGINT received — terminating {active_count()} active subprocess(es)...{Style.RESET_ALL}")
+            terminate_all(grace=2.0)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _handle_sigint)
+    atexit.register(terminate_all, 2.0)
+
+
 def main():
     """Main application with execution verification"""
     # Load environment variables
     load_dotenv()
+    _install_signal_handlers()
 
     # Check for appropriate API key based on provider
     provider = os.getenv("LLM_PROVIDER", "google_genai").lower()

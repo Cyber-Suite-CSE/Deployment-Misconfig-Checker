@@ -1,111 +1,17 @@
 import subprocess
 import re
 import os
-import sys
-import shutil
-import threading
-import time
+import shlex
 from typing import Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from colorama import init, Fore, Style
 
+from tools._proc_runner import run_with_timeout
+
 init(autoreset=True)
 
-
-class SlidingWindowDisplay:
-    def __init__(self, max_lines=10):
-        self.max_lines = max_lines
-        self.lines = []
-        self.terminal_width = shutil.get_terminal_size((80, 24)).columns
-        self.is_initialized = False
-        self.current_line_count = 0
-        
-    def initialize_display(self):
-        if not self.is_initialized:
-            self.is_initialized = True
-    
-    def add_line(self, line):
-        line = line.rstrip()
-        if not line:
-            return
-            
-        if len(line) > self.terminal_width - 4:
-            line = line[:self.terminal_width - 7] + "..."
-            
-        self.lines.append(line)
-        
-        if len(self.lines) <= self.max_lines:
-            print(f"{Fore.WHITE}{line}{Style.RESET_ALL}")
-            sys.stdout.flush()
-            self.current_line_count += 1
-        else:
-            self.lines.pop(0)
-            self.update_display(line)
-    
-    def update_display(self, new_line):
-        if not self.is_initialized:
-            return
-        
-        sys.stdout.write(f"\033[{self.max_lines}A")
-        sys.stdout.write("\033[1M")
-        sys.stdout.write(f"\033[{self.max_lines - 1}B")
-        print(f"{Fore.WHITE}{new_line}{Style.RESET_ALL}")
-        sys.stdout.flush()
-    
-    def finalize(self, full_output):
-        if not self.is_initialized:
-            return
-            
-        sys.stdout.write(f"\033[{self.max_lines}A")
-        sys.stdout.write("\033[J")
-        print()
-
-
-def stream_output_with_sliding_window(process, max_window_lines=10):
-    display = SlidingWindowDisplay(max_lines=max_window_lines)
-    display.initialize_display()
-    
-    full_output = []
-    full_stderr = []
-    
-    def read_stream(stream, is_stderr=False):
-        try:
-            for line in iter(stream.readline, ""):
-                if not line:
-                    break
-                    
-                line = line.rstrip()
-                
-                if is_stderr:
-                    full_stderr.append(line)
-                else:
-                    full_output.append(line)
-                
-                display.add_line(line)
-        except Exception as e:
-            display.add_line(f"Error reading stream: {str(e)}")
-    
-    stdout_thread = threading.Thread(target=read_stream, args=(process.stdout, False))
-    stderr_thread = threading.Thread(target=read_stream, args=(process.stderr, True))
-    
-    stdout_thread.daemon = True
-    stderr_thread.daemon = True
-    
-    stdout_thread.start()
-    stderr_thread.start()
-    
-    process.wait()
-    
-    stdout_thread.join(timeout=2)
-    stderr_thread.join(timeout=2)
-    
-    full_output_str = "\n".join(full_output)
-    full_stderr_str = "\n".join(full_stderr)
-    
-    display.finalize(full_output_str)
-    
-    return full_output_str, full_stderr_str, process.returncode
+WPSCAN_TIMEOUT_S = int(os.getenv("WPSCAN_TIMEOUT", "600"))
 
 
 
@@ -178,10 +84,10 @@ def execute_wpscan(command: str, safe_mode: bool = True) -> str:
 
         print(f"{Fore.GREEN}[DEBUG] Safety checks passed{Style.RESET_ALL}")
 
-    if not (command.strip().startswith('wpscan')):
-        error_msg = "Command must start with 'wpscan'"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        return f"Error: {error_msg}"
+    stripped = command.strip()
+    if not stripped.startswith('wpscan'):
+        command = f"wpscan {stripped}"
+        print(f"{Fore.YELLOW}[DEBUG] Auto-prepended 'wpscan' (command was missing binary name){Style.RESET_ALL}")
 
     lower_command = command.lower()
     is_scan_command = (
@@ -204,7 +110,9 @@ def execute_wpscan(command: str, safe_mode: bool = True) -> str:
         if "--api-token" not in lower_command:
             api_token = os.getenv("WPSCAN_API_TOKEN")
             if api_token:
-                command += f" --api-token {api_token}"
+                # shlex.quote so a token containing shell metacharacters
+                # ($, ;, etc.) is passed literally rather than interpreted.
+                command += f" --api-token {shlex.quote(api_token)}"
                 print(f"{Fore.YELLOW}[DEBUG] Injected WPScan API token from environment{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}[DEBUG] No WPSCAN_API_TOKEN found in environment{Style.RESET_ALL}")
@@ -212,22 +120,20 @@ def execute_wpscan(command: str, safe_mode: bool = True) -> str:
     actual_command = command
 
     try:
-        print(f"{Fore.YELLOW}[DEBUG] Executing command with sliding window display...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}[DEBUG] Executing command...{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] Command: {Fore.WHITE}{actual_command}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}[DEBUG] Starting real-time output streaming...{Style.RESET_ALL}\n")
-        
-        process = subprocess.Popen(
-            actual_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
+
+        stdout, stderr, returncode, timed_out = run_with_timeout(
+            actual_command, timeout=WPSCAN_TIMEOUT_S
         )
-        
-        stdout, stderr, returncode = stream_output_with_sliding_window(process, max_window_lines=12)
-        
+
+        if timed_out:
+            error_msg = f"Command timed out after {WPSCAN_TIMEOUT_S} seconds"
+            print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}[DEBUG] Process group killed; this scan may be too complex for the timeout limit{Style.RESET_ALL}")
+            return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
+
+        # stdout/stderr were already streamed to the terminal during execution.
         print(f"{Fore.GREEN}[DEBUG] Command execution completed{Style.RESET_ALL}")
         print(f"{Fore.BLUE}[DEBUG] Return code: {Fore.WHITE}{returncode}{Style.RESET_ALL}")
 
@@ -244,11 +150,6 @@ def execute_wpscan(command: str, safe_mode: bool = True) -> str:
 
         return output if output else "No output from command"
 
-    except subprocess.TimeoutExpired:
-        error_msg = "Command timed out after 600 seconds"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}[DEBUG] This scan may be too complex for the timeout limit{Style.RESET_ALL}")
-        return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
     except Exception as e:
         error_msg = f"Error executing command: {str(e)}"
         print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")

@@ -6,6 +6,10 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from colorama import init, Fore, Style
 
+from tools._proc_runner import run_with_timeout
+
+NMAP_TIMEOUT_S = int(os.getenv("NMAP_TIMEOUT", "120"))
+
 # Initialize colorama for colored output
 init(autoreset=True)
 
@@ -132,11 +136,13 @@ def execute_nmap(command: str, safe_mode: bool = True) -> str:
 
         print(f"{Fore.GREEN}[DEBUG] Safety checks passed{Style.RESET_ALL}")
 
-    # Ensure the command starts with 'nmap' or 'man nmap'
-    if not (command.strip().startswith('nmap') or command.strip().startswith('man nmap')):
-        error_msg = "Command must start with 'nmap' or 'man nmap'"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        return f"Error: {error_msg}"
+    # Ensure the command starts with 'nmap' or 'man nmap'.
+    # If the LLM omitted the binary name, prepend it instead of bouncing the call —
+    # avoids a wasted self-correction round-trip.
+    stripped = command.strip()
+    if not (stripped.startswith('nmap') or stripped.startswith('man nmap')):
+        command = f"nmap {stripped}"
+        print(f"{Fore.YELLOW}[DEBUG] Auto-prepended 'nmap' (command was missing binary name){Style.RESET_ALL}")
 
     # Check if the command needs root privileges
     needs_root = needs_root_privileges(command)
@@ -162,42 +168,27 @@ def execute_nmap(command: str, safe_mode: bool = True) -> str:
         print(f"{Fore.CYAN}[DEBUG] Actual command: {Fore.WHITE}{actual_command}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] ----------------------------------------{Style.RESET_ALL}")
 
-        # Execute the command with timeout
-        result = subprocess.run(
-            actual_command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,  # 120 second timeout
-            check=False
+        stdout, stderr, returncode, timed_out = run_with_timeout(
+            actual_command, timeout=NMAP_TIMEOUT_S
         )
 
+        if timed_out:
+            error_msg = f"Command timed out after {NMAP_TIMEOUT_S} seconds"
+            print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}[DEBUG] Process group killed; this scan may be too complex for the timeout limit{Style.RESET_ALL}")
+            return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
+
         print(f"{Fore.GREEN}[DEBUG] Command execution completed{Style.RESET_ALL}")
-        print(f"{Fore.BLUE}[DEBUG] Return code: {Fore.WHITE}{result.returncode}{Style.RESET_ALL}")
+        print(f"{Fore.BLUE}[DEBUG] Return code: {Fore.WHITE}{returncode}{Style.RESET_ALL}")
 
-        # Print raw stdout
-        if result.stdout:
-            print(f"{Fore.CYAN}[DEBUG] ========== RAW STDOUT ==========={Style.RESET_ALL}")
-            print(result.stdout)
-            print(f"{Fore.CYAN}[DEBUG] ========== END STDOUT ==========={Style.RESET_ALL}")
-        else:
-            print(f"{Fore.YELLOW}[DEBUG] No stdout output{Style.RESET_ALL}")
+        # stdout/stderr were already streamed to the terminal during execution
+        # by run_with_timeout; don't double-print them here.
+        output = stdout
+        if stderr:
+            output += f"\n\n{Fore.YELLOW}===== Errors/Warnings ====={Style.RESET_ALL}\n{stderr}"
 
-        # Print raw stderr if exists
-        if result.stderr:
-            print(f"{Fore.MAGENTA}[DEBUG] ========== RAW STDERR ==========={Style.RESET_ALL}")
-            print(result.stderr)
-            print(f"{Fore.MAGENTA}[DEBUG] ========== END STDERR ==========={Style.RESET_ALL}")
-        else:
-            print(f"{Fore.YELLOW}[DEBUG] No stderr output{Style.RESET_ALL}")
-
-        # Combine output
-        output = result.stdout
-        if result.stderr:
-            output += f"\n\n{Fore.YELLOW}===== Errors/Warnings ====={Style.RESET_ALL}\n{result.stderr}"
-
-        if result.returncode != 0 and not output:
-            output = f"Command failed with return code {result.returncode}"
+        if returncode != 0 and not output:
+            output = f"Command failed with return code {returncode}"
             print(f"{Fore.RED}[DEBUG] {output}{Style.RESET_ALL}")
 
         print(f"{Fore.GREEN}[DEBUG] Tool execution complete, returning output{Style.RESET_ALL}")
@@ -205,12 +196,6 @@ def execute_nmap(command: str, safe_mode: bool = True) -> str:
 
         return output if output else "No output from command"
 
-    except subprocess.TimeoutExpired:
-        error_msg = "Command timed out after 120 seconds"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}[DEBUG] This scan may be too complex for the timeout limit{Style.RESET_ALL}")
-        # Return special timeout indicator for retry logic
-        return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
     except Exception as e:
         error_msg = f"Error executing command: {str(e)}"
         print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")

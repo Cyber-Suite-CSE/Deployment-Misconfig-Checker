@@ -1,9 +1,11 @@
 import json
+import os
 import re
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 from colorama import init
-from deepagents import FilesystemPermission, create_deep_agent
+from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 
 from llm_factory import create_llm
@@ -47,17 +49,15 @@ class V2DeepOrchestrator:
         ]
 
         factory = self.agent_factory or create_deep_agent
+        # Note: previously this passed a deny-all FilesystemPermission. That rule
+        # only restricts the named filesystem tools (write_file/edit_file) — not
+        # the FilesystemMiddleware's internal eviction writes — so it added no
+        # real safety while preventing the agent from using its own filesystem
+        # tools. Dropped.
         self._supervisor = factory(
             model=self.llm,
             subagents=subagents,
             system_prompt=SUPERVISOR_SYSTEM_PROMPT,
-            permissions=[
-                FilesystemPermission(
-                    operations=["write"],
-                    paths=["/**"],
-                    mode="deny",
-                )
-            ],
             backend=StateBackend(),
             name="v2-supervisor-agent",
         )
@@ -299,9 +299,12 @@ class V2DeepOrchestrator:
                 continue
 
             content = self._message_content_to_text(getattr(msg, "content", ""))
-            structured_data = self._parse_json_content(content)
-            if structured_data is None:
-                continue
+            # Subagents with response_format usually emit JSON via Pydantic
+            # model_dump_json(); when they don't (e.g. agent finished without
+            # populating structured_response), content is plain text. Capture
+            # the step either way — the empty structured_data is fine, the
+            # raw_result still feeds downstream consumers.
+            structured_data = self._parse_json_content(content) or {}
 
             tracked["status"] = "complete"
             task = tracked.get("task") or user_request
@@ -387,10 +390,17 @@ class V2DeepOrchestrator:
                     "execution_history": [],
                 }
 
+            # Rebuild supervisor every run. deepagents' StateBackend is stateful;
+            # leftover state from an aborted previous run can wedge the next one.
+            self._supervisor = None
             supervisor = self._build_supervisor()
             execution_history: List[Dict[str, Any]] = []
             active_subagents: Dict[str, Dict[str, Any]] = {}
             final_response = ""
+
+            wall_timeout = float(os.getenv("WORKFLOW_WALL_TIMEOUT", "1800"))
+            deadline = time.monotonic() + wall_timeout
+            wall_timed_out = False
 
             for chunk in supervisor.stream(
                 {"messages": [{"role": "user", "content": user_request}]},
@@ -398,6 +408,9 @@ class V2DeepOrchestrator:
                 subgraphs=True,
                 version="v2",
             ):
+                if time.monotonic() > deadline:
+                    wall_timed_out = True
+                    break
                 self._track_pending_subagents(active_subagents, chunk)
                 self._mark_running_subagents(active_subagents, chunk)
                 self._consume_completed_subagents(
@@ -410,6 +423,10 @@ class V2DeepOrchestrator:
                 final_response = self._extract_final_response_from_chunk(
                     chunk, final_response
                 )
+
+            if wall_timed_out:
+                marker = f"\n[WORKFLOW_TIMEOUT: wall-clock budget of {wall_timeout:.0f}s exceeded; partial results returned]"
+                final_response = (final_response or "") + marker
 
             return {
                 "success": bool(execution_history) or bool(final_response),

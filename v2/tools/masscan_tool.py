@@ -6,7 +6,11 @@ from colorama import Fore, Style, init
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from tools._proc_runner import run_with_timeout
+
 init(autoreset=True)
+
+MASSCAN_TIMEOUT_S = int(os.getenv("MASSCAN_TIMEOUT", "300"))
 
 
 class MasscanInput(BaseModel):
@@ -90,8 +94,10 @@ def execute_masscan(command: str, safe_mode: bool = True) -> str:
             if re.search(pattern, command, re.IGNORECASE):
                 return f"Error: Command blocked for safety reasons. Pattern '{pattern}' detected."
 
-    if not command.strip().startswith("masscan"):
-        return "Error: Command must start with 'masscan'"
+    stripped = command.strip()
+    if not stripped.startswith("masscan"):
+        command = f"masscan {stripped}"
+        print(f"{Fore.YELLOW}[DEBUG] Auto-prepended 'masscan' (command was missing binary name){Style.RESET_ALL}")
 
     actual_command = command
     if _needs_root_privileges(command):
@@ -102,21 +108,16 @@ def execute_masscan(command: str, safe_mode: bool = True) -> str:
             pass
 
     try:
-        result = subprocess.run(
-            actual_command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
+        stdout, stderr, returncode, timed_out = run_with_timeout(
+            actual_command, timeout=MASSCAN_TIMEOUT_S
         )
-        output = result.stdout or ""
-        if result.stderr:
-            output += f"\n\n===== Errors/Warnings =====\n{result.stderr}"
-        if result.returncode != 0 and not output:
-            output = f"Command failed with return code {result.returncode}"
+        if timed_out:
+            return f"TIMEOUT_ERROR: Command timed out after {MASSCAN_TIMEOUT_S} seconds - Command: {actual_command}"
+        output = stdout or ""
+        if stderr:
+            output += f"\n\n===== Errors/Warnings =====\n{stderr}"
+        if returncode != 0 and not output:
+            output = f"Command failed with return code {returncode}"
         return output or "No output from command"
-    except subprocess.TimeoutExpired:
-        return f"TIMEOUT_ERROR: Command timed out after 300 seconds - Command: {actual_command}"
     except Exception as exc:
         return f"Error executing command: {exc}"
