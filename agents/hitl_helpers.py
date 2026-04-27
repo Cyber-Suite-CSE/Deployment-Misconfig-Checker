@@ -25,6 +25,7 @@ init(autoreset=True)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AUDIT_LOG_PATH = os.path.join(_PROJECT_ROOT, "logs", "hitl_decisions.jsonl")
 CHECKPOINT_DB_PATH = os.path.join(_PROJECT_ROOT, ".langgraph_checkpoint.sqlite")
+SESSION_STORE_PATH = os.path.join(_PROJECT_ROOT, ".langgraph_sessions.json")
 
 
 # Tool name → leading token that must remain in the `command` arg.

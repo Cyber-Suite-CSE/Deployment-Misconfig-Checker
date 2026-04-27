@@ -72,7 +72,8 @@ def print_help():
 {Fore.GREEN}▸{Style.RESET_ALL} Type cybersecurity requests - {Fore.RED}COMMANDS WILL BE EXECUTED{Style.RESET_ALL}
 {Fore.GREEN}▸{Style.RESET_ALL} 'help' or '?' - Show this help
 {Fore.GREEN}▸{Style.RESET_ALL} 'capabilities' - Show execution capabilities
-{Fore.GREEN}▸{Style.RESET_ALL} 'clear' - Clear screen
+{Fore.GREEN}▸{Style.RESET_ALL} '/clear' - Start a new session (fresh thread, clears screen)
+{Fore.GREEN}▸{Style.RESET_ALL} '/resume [id]' - List previous sessions or resume one by id/prefix
 {Fore.GREEN}▸{Style.RESET_ALL} 'exit' or 'quit' - Exit program
 
 {Fore.YELLOW}═══ EXAMPLE EXECUTION REQUESTS ═══{Style.RESET_ALL}
@@ -92,6 +93,47 @@ def print_help():
 {Fore.MAGENTA}⚠️  ALL COMMANDS RUN FOR REAL - DEBUG OUTPUT WILL SHOW ⚠️{Style.RESET_ALL}
     """
     print(help_text)
+
+
+def _render_session_list(sessions) -> None:
+    """Print a numbered table of recent sessions to stdout."""
+    if not sessions:
+        print(f"{Fore.YELLOW}No previous sessions found.{Style.RESET_ALL}")
+        return
+    print(
+        f"\n{Fore.CYAN}{'#':>3}  {'id':<10} {'updated':<22} {'turns':>5}  first message{Style.RESET_ALL}"
+    )
+    for idx, entry in enumerate(sessions, start=1):
+        tid = entry.get("thread_id", "")[:8]
+        updated = entry.get("updated_at", "")[:19].replace("T", " ")
+        turns = entry.get("turn_count", 0)
+        first = (entry.get("first_message") or "").replace("\n", " ")
+        if len(first) > 60:
+            first = first[:57] + "..."
+        print(f"{idx:>3}  {tid:<10} {updated:<22} {turns:>5}  {first}")
+
+
+def _resume_by_input(orchestrator, raw: str, sessions) -> None:
+    """Resolve user input (number, id, or prefix) and resume the session."""
+    raw = raw.strip()
+    if not raw:
+        print(f"{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
+        return
+    if raw.isdigit():
+        idx = int(raw)
+        if 1 <= idx <= len(sessions):
+            target = sessions[idx - 1]["thread_id"]
+            resolved = orchestrator.resume_session(target)
+        else:
+            resolved = None
+    else:
+        resolved = orchestrator.resume_session(raw)
+    if resolved:
+        print(
+            f"{Fore.GREEN}[Session] Resumed {resolved[:8]}{Style.RESET_ALL}"
+        )
+    else:
+        print(f"{Fore.RED}No session found matching {raw!r}{Style.RESET_ALL}")
 
 
 def verify_execution_in_response(response: str) -> bool:
@@ -222,7 +264,11 @@ def main():
     try:
         print(f"{Fore.CYAN}Initializing execution system...{Style.RESET_ALL}")
         orchestrator = OrchestratorAgent()
-        print(f"{Fore.GREEN}✓ Execution system ready!{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}✓ Execution system ready!{Style.RESET_ALL}")
+        print(
+            f"{Fore.CYAN}[Session] {orchestrator.current_session_id()[:8]} "
+            f"(use /resume to continue an older one){Style.RESET_ALL}\n"
+        )
     except Exception as e:
         print(f"{Fore.RED}Failed to initialize: {e}{Style.RESET_ALL}")
         sys.exit(1)
@@ -267,9 +313,34 @@ def main():
                 print("\n" + orchestrator.get_available_capabilities())
                 continue
 
-            if user_input.lower() == "clear":
+            lowered = user_input.lower().strip()
+            if lowered == "/clear":
+                new_id = orchestrator.new_session()
                 os.system("clear" if os.name != "nt" else "cls")
                 print_banner()
+                print(
+                    f"{Fore.GREEN}[Session] New session started: {new_id[:8]}{Style.RESET_ALL}"
+                )
+                continue
+
+            if lowered == "/resume" or lowered.startswith("/resume "):
+                arg = user_input.strip()[len("/resume"):].strip()
+                current = orchestrator.current_session_id()
+                sessions = [
+                    s for s in orchestrator.list_sessions()
+                    if s.get("thread_id") != current
+                ]
+                if arg:
+                    _resume_by_input(orchestrator, arg, sessions)
+                    continue
+                _render_session_list(sessions)
+                if not sessions:
+                    continue
+                pick = input(
+                    f"\n{Fore.CYAN}Resume which? "
+                    f"(number, full id, or prefix; blank to cancel) > {Style.RESET_ALL}"
+                )
+                _resume_by_input(orchestrator, pick, sessions)
                 continue
 
             # Process execution request

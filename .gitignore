@@ -13,4 +13,5 @@ eval/results/
 .langgraph_checkpoint.sqlite
 .langgraph_checkpoint.sqlite-shm
 .langgraph_checkpoint.sqlite-wal
+.langgraph_sessions.json
 logs/hitl_decisions.jsonl

@@ -12,17 +12,38 @@ from langgraph.types import Interrupt
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+from textual.suggester import SuggestFromList
 from textual.widgets import Input, Static
 
 from agents import hitl_helpers
 
 from .bridge import TUIBridge
 from .hitl_bar import HITLBar
+from .resume_bar import ResumeBar
 from .stdout_tee import TeeStdout
 from .widgets import AgentStepCard, ReportCard, UserMessageCard, WelcomeCard
 
+
+class CommandInput(Input):
+    """Input that also accepts the suggester's completion when Tab is pressed.
+
+    Textual's stock ``Input`` already accepts suggestions on Right/End via
+    ``action_cursor_right`` (it applies ``self._suggestion`` when the cursor is
+    at end of input). We just route Tab to the same action.
+    """
+
+    BINDINGS = [Binding("tab", "cursor_right", show=False)]
+
 if TYPE_CHECKING:
     from agents.orchestrator_agent import OrchestratorAgent
+
+
+_DISPATCHER_TO_AGENT = {
+    "run_nmap_agent": "nmap",
+    "run_wpscan_agent": "wpscan",
+    "run_nikto_agent": "nikto",
+    "run_msf_passive_agent": "metasploit",
+}
 
 
 class CyberExecApp(App):
@@ -86,9 +107,24 @@ class CyberExecApp(App):
         Binding("right", "hitl_select_next", show=False, priority=True),
         Binding("down", "hitl_select_next", show=False, priority=True),
         Binding("enter", "hitl_confirm", show=False, priority=True),
+        # Resume bar — same keys, different actions, gated by check_action so
+        # they only fire when the resume bar is visible (HITL bar is not).
+        Binding("up", "resume_prev", show=False, priority=True),
+        Binding("down", "resume_next", show=False, priority=True),
+        Binding("enter", "resume_confirm", show=False, priority=True),
+        Binding("escape", "resume_cancel", show=False, priority=True),
     ]
 
-    IDLE_HINT = "[dim]ask anything · ? help · ⌃l clear · ⌃c quit[/dim]"
+    IDLE_HINT = "[dim]ask anything · ? help · /clear new · /resume continue · ⌃c quit[/dim]"
+
+    COMMAND_SUGGESTIONS = [
+        "/clear",
+        "/resume",
+        "help",
+        "capabilities",
+        "exit",
+        "quit",
+    ]
 
     def __init__(self, orchestrator: "OrchestratorAgent") -> None:
         super().__init__()
@@ -99,6 +135,7 @@ class CyberExecApp(App):
         self._busy = False
         self._hitl_bar: Optional[HITLBar] = None
         self._hitl_queue: List[Tuple[Interrupt, "Future[Dict[str, Any]]"]] = []
+        self._resume_bar: Optional[ResumeBar] = None
 
     # ------------------------------------------------------------------
     # Layout
@@ -108,11 +145,17 @@ class CyberExecApp(App):
         yield Static("", id="status")
         with Horizontal(id="prompt-row"):
             yield Static(">", id="prompt-prefix")
-            yield Input(placeholder="ask anything…", id="prompt")
+            yield CommandInput(
+                placeholder="ask anything…",
+                id="prompt",
+                suggester=SuggestFromList(self.COMMAND_SUGGESTIONS, case_sensitive=False),
+            )
 
     def on_mount(self) -> None:
         hitl_helpers.set_prompter(self.bridge.prompt_decision)
         self._append(WelcomeCard())
+        sid = self.orchestrator.current_session_id()[:8]
+        self._append(_HelpLine(f"[dim]session[/dim] {sid}"))
         self._set_status(self.IDLE_HINT)
         self.query_one("#prompt", Input).focus()
 
@@ -142,10 +185,137 @@ class CyberExecApp(App):
         if lower == "capabilities":
             self._show_capabilities()
             return
-        if lower == "clear":
+        if lower == "/clear":
+            new_id = self.orchestrator.new_session()
             self.action_clear_conversation()
+            self._append(WelcomeCard())
+            self._append(_HelpLine(f"[dim]session[/dim] new {new_id[:8]}"))
+            self._set_status(self.IDLE_HINT)
+            return
+        if lower == "/resume" or lower.startswith("/resume "):
+            self._handle_resume(text[len("/resume"):].strip())
             return
         self._submit_request(text)
+
+    def _handle_resume(self, arg: str) -> None:
+        if arg:
+            self._do_resume(arg)
+            return
+        current = self.orchestrator.current_session_id()
+        sessions = [
+            s for s in self.orchestrator.list_sessions()
+            if s.get("thread_id") != current
+        ]
+        if not sessions:
+            self._append(_HelpLine("[dim]no other sessions to resume[/dim]"))
+            return
+        self._show_resume_bar(sessions)
+
+    # ------------------------------------------------------------------
+    # Resume bar — inline picker (replaces the input)
+    # ------------------------------------------------------------------
+    def _show_resume_bar(self, sessions: List[Dict[str, Any]]) -> None:
+        if self._resume_bar is not None or self._hitl_bar is not None:
+            return
+        prompt_row = self.query_one("#prompt-row")
+        prompt_row.display = False
+        bar = ResumeBar(
+            sessions=sessions,
+            on_select=self._on_resume_select,
+            on_cancel=self._hide_resume_bar,
+        )
+        self._resume_bar = bar
+        self.mount(bar, after=self.query_one("#status", Static))
+
+    def _on_resume_select(self, thread_id: str) -> None:
+        resolved = self.orchestrator.resume_session(thread_id) if thread_id else None
+        self._hide_resume_bar()
+        if not resolved:
+            self._append(_HelpLine("[red]could not resume session[/red]"))
+            return
+        self._do_resume(resolved)
+
+    def _do_resume(self, id_or_prefix: str) -> None:
+        """Common path for both `/resume <id>` and panel-pick: resolve, clear, replay."""
+        resolved = self.orchestrator.resume_session(id_or_prefix)
+        if not resolved:
+            self._append(_HelpLine(f"[red]no session found matching[/red] {id_or_prefix!r}"))
+            return
+        self.action_clear_conversation()
+        self._append(_HelpLine(f"[dim]session[/dim] resumed {resolved[:8]}"))
+        messages = self.orchestrator.get_session_messages(resolved)
+        if messages:
+            self._replay_messages(messages)
+        else:
+            self._append(_HelpLine("[dim](no prior messages stored)[/dim]"))
+
+    def _replay_messages(self, messages: List[Any]) -> None:
+        """Render past UserMessageCard / AgentStepCard / ReportCard widgets from stored state.
+
+        Stored tool messages carry only the structured JSON the supervisor saw — sub-agent
+        stdout (the [DEBUG] lines streamed live) was never persisted, so replayed cards
+        show the call + result but no per-line scrollback.
+        """
+        tool_results: Dict[str, Any] = {}
+        for m in messages:
+            tcid = getattr(m, "tool_call_id", None)
+            if tcid:
+                tool_results[tcid] = m
+
+        for msg in messages:
+            cls_name = msg.__class__.__name__
+            content = self._extract_text(getattr(msg, "content", None))
+            if cls_name in ("HumanMessage", "Human"):
+                if content:
+                    self._append(UserMessageCard(content))
+                continue
+            if cls_name in ("AIMessage", "AI", "AIMessageChunk"):
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                for tc in tool_calls:
+                    name = (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")) or ""
+                    args = (tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})) or {}
+                    tc_id = (tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", "")) or ""
+                    agent = _DISPATCHER_TO_AGENT.get(name, name or "agent")
+                    task = args.get("task") if isinstance(args, dict) else str(args)
+                    card = AgentStepCard(agent=agent, task=task or "", step=0)
+                    self._append(card)
+                    if tc_id in tool_results:
+                        card.mark_complete({"executed": True, "success": True})
+                    else:
+                        card.mark_failed("(no result recorded)")
+                if content and not tool_calls:
+                    self._append(ReportCard(content))
+                continue
+            # ToolMessage handled via the tool_results map above.
+
+    @staticmethod
+    def _extract_text(content: Any) -> str:
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for chunk in content:
+                if isinstance(chunk, dict):
+                    text = chunk.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+                elif isinstance(chunk, str):
+                    parts.append(chunk)
+            return "".join(parts)
+        return str(content)
+
+    def _hide_resume_bar(self) -> None:
+        if self._resume_bar is None:
+            return
+        bar = self._resume_bar
+        self._resume_bar = None
+        bar.remove()
+        prompt_row = self.query_one("#prompt-row")
+        prompt_row.display = True
+        if not self._busy and self._hitl_bar is None:
+            self.query_one("#prompt", Input).focus()
 
     def _submit_request(self, text: str) -> None:
         self._append(UserMessageCard(text))
@@ -309,8 +479,10 @@ class CyberExecApp(App):
             pass
 
     def _show_help(self) -> None:
+        sid = self.orchestrator.current_session_id()[:8]
         text = (
-            "[dim]commands[/dim]  help  ·  capabilities  ·  clear  ·  exit\n"
+            "[dim]commands[/dim]  help  ·  capabilities  ·  /clear  ·  /resume [id]  ·  exit\n"
+            f"[dim]session[/dim]  {sid}\n"
             "[dim]examples[/dim]  scan localhost  ·  scan WordPress site https://example.com"
         )
         self._append(_HelpLine(text))
@@ -326,7 +498,7 @@ class CyberExecApp(App):
     # Bindings
     # ------------------------------------------------------------------
     def check_action(self, action: str, parameters):  # type: ignore[override]
-        """Gate HITL bindings by bar state so they don't swallow normal keystrokes."""
+        """Gate HITL/resume bindings by bar state so they don't swallow normal keystrokes."""
         if action.startswith("hitl_"):
             bar = self._hitl_bar
             if bar is None:
@@ -336,6 +508,8 @@ class CyberExecApp(App):
             # approve / edit / reject — only active in choose mode so the user
             # can still type those characters in the inline edit/reject input.
             return bar.mode == "choose"
+        if action.startswith("resume_"):
+            return self._resume_bar is not None and self._hitl_bar is None
         return True
 
     def action_hitl_approve(self) -> None:
@@ -365,6 +539,22 @@ class CyberExecApp(App):
     def action_hitl_confirm(self) -> None:
         if self._hitl_bar is not None:
             self._hitl_bar.action_confirm()
+
+    def action_resume_prev(self) -> None:
+        if self._resume_bar is not None:
+            self._resume_bar.action_prev()
+
+    def action_resume_next(self) -> None:
+        if self._resume_bar is not None:
+            self._resume_bar.action_next()
+
+    def action_resume_confirm(self) -> None:
+        if self._resume_bar is not None:
+            self._resume_bar.action_confirm()
+
+    def action_resume_cancel(self) -> None:
+        if self._resume_bar is not None:
+            self._resume_bar.action_cancel()
 
     def action_request_quit(self) -> None:
         self.exit()

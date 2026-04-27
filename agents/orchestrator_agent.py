@@ -13,6 +13,7 @@ from agents.hitl_helpers import get_checkpointer
 from agents.metasploit_passive_agent import MetasploitPassiveAgent
 from agents.nikto_agent import NiktoAgent
 from agents.nmap_agent import NmapAgent
+from agents.session_store import SessionStore
 from agents.wpscan_agent import WpscanAgent
 from llm_factory import create_llm
 from tui.context import current_card_id
@@ -34,7 +35,10 @@ class OrchestratorAgent:
 
     Sub-agents own their own HITL middleware and SqliteSaver checkpointer; the supervisor
     only sees clean tool results. The supervisor itself uses the same SqliteSaver for
-    conversation persistence so a session can be inspected/resumed across restarts.
+    conversation persistence, keyed by ``self._current_thread_id`` — a stable id that
+    persists across turns and survives restarts (see ``new_session``/``resume_session``).
+    Sub-agent dispatches still use a fresh ``uuid4().hex`` per call; each is a one-shot
+    tool execution, not part of the supervisor's conversation thread.
     """
 
     def __init__(self, orchestrator_model=None, sub_agent_model=None, temperature=0.0):
@@ -97,6 +101,12 @@ class OrchestratorAgent:
             system_prompt=f"{ORCHESTRATOR_SYSTEM_PROMPT}\n\n{_DISPATCHER_GUIDANCE}",
             checkpointer=get_checkpointer(),
         )
+
+        # Persistent session — supervisor uses the same thread_id across turns so the
+        # checkpointer actually replays prior messages. Rotated by new_session()/
+        # resume_session().
+        self._session_store = SessionStore()
+        self._current_thread_id: str = uuid4().hex
 
     # ------------------------------------------------------------------
     # Dispatcher tools — each closes over self so it can record execution
@@ -448,11 +458,12 @@ class OrchestratorAgent:
             self._progress_callback = progress_callback
             self._step_started_callback = step_started_callback
             print(
-                f"{Fore.CYAN}[Orchestrator] Supervisor processing request{Style.RESET_ALL}"
+                f"{Fore.CYAN}[Orchestrator] Supervisor processing request "
+                f"(session {self._current_thread_id[:8]}){Style.RESET_ALL}"
             )
 
-            thread_id = uuid4().hex
-            config = {"configurable": {"thread_id": thread_id}}
+            self._session_store.record_turn(self._current_thread_id, user_request)
+            config = {"configurable": {"thread_id": self._current_thread_id}}
             response = self.supervisor.invoke(
                 {"messages": [("user", user_request)]},
                 config=config,
@@ -500,8 +511,7 @@ class OrchestratorAgent:
             self._execution_history = []
             self._progress_callback = progress_callback
 
-            thread_id = uuid4().hex
-            config = {"configurable": {"thread_id": thread_id}}
+            config = {"configurable": {"thread_id": self._current_thread_id}}
             response = self.supervisor.invoke(
                 {"messages": [("user", user_request)]},
                 config=config,
@@ -540,3 +550,47 @@ class OrchestratorAgent:
             for cap in caps:
                 capabilities.append(f"  - {cap}")
         return "\n".join(capabilities)
+
+    # ------------------------------------------------------------------
+    # Session management — drives /clear and /resume in the REPL/TUI
+    # ------------------------------------------------------------------
+    def current_session_id(self) -> str:
+        return self._current_thread_id
+
+    def new_session(self) -> str:
+        """Rotate to a fresh thread_id. Old sessions remain on disk and resumable."""
+        self._current_thread_id = uuid4().hex
+        return self._current_thread_id
+
+    def resume_session(self, thread_id_or_prefix: str) -> Optional[str]:
+        """Switch the active thread_id to a known session. Accepts a full id or unique prefix."""
+        candidate = (thread_id_or_prefix or "").strip()
+        if not candidate:
+            return None
+        if self._session_store.exists(candidate):
+            self._current_thread_id = candidate
+            return candidate
+        resolved = self._session_store.find_by_prefix(candidate)
+        if resolved:
+            self._current_thread_id = resolved
+            return resolved
+        return None
+
+    def list_sessions(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self._session_store.list_recent(limit=limit)
+
+    def get_session_messages(self, thread_id: str) -> List[Any]:
+        """Return the supervisor's persisted messages for a thread, or [] if absent."""
+        if not thread_id:
+            return []
+        config = {"configurable": {"thread_id": thread_id}}
+        try:
+            state = self.supervisor.get_state(config)
+        except Exception:
+            return []
+        values = getattr(state, "values", None)
+        if isinstance(values, dict):
+            messages = values.get("messages")
+            if isinstance(messages, list):
+                return list(messages)
+        return []
