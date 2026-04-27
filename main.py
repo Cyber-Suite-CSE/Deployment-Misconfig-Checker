@@ -9,6 +9,7 @@ import sys
 from dotenv import load_dotenv
 from colorama import init, Fore, Style, Back
 from agents.orchestrator_agent import OrchestratorAgent
+from agents.hitl_helpers import AUDIT_LOG_PATH, CHECKPOINT_DB_PATH
 from tools.nmap_tool import validate_nmap_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
@@ -16,6 +17,38 @@ from tools.metasploit_tool import validate_metasploit_connection
 from llm_factory import get_current_provider
 
 init(autoreset=True)
+
+
+def _bootstrap_hitl_paths() -> None:
+    """Make sure ./logs/ and the checkpointer DB directory are writable.
+
+    Failure here is non-fatal — we warn and let the user decide whether to continue.
+    """
+    for label, path in (
+        ("audit log", AUDIT_LOG_PATH),
+        ("checkpointer db", CHECKPOINT_DB_PATH),
+    ):
+        directory = os.path.dirname(path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+            probe = os.path.join(directory, ".write_probe")
+            with open(probe, "w") as fh:
+                fh.write("")
+            os.remove(probe)
+        except OSError as exc:
+            print(
+                f"{Fore.YELLOW}[System] Warning: cannot write {label} at {path} ({exc}){Style.RESET_ALL}"
+            )
+
+
+def _audit_count_for_session(start_size: int) -> int:
+    """Lines added to the audit log since ``start_size`` bytes."""
+    try:
+        with open(AUDIT_LOG_PATH, "rb") as fh:
+            fh.seek(start_size)
+            return sum(1 for _ in fh)
+    except FileNotFoundError:
+        return 0
 
 
 def print_banner():
@@ -182,6 +215,9 @@ def main():
         f"{Fore.MAGENTA}System will EXECUTE REAL COMMANDS - Use responsibly!{Style.RESET_ALL}\n"
     )
 
+    # Bootstrap HITL paths (audit log + checkpointer DB)
+    _bootstrap_hitl_paths()
+
     # Initialize orchestrator
     try:
         print(f"{Fore.CYAN}Initializing execution system...{Style.RESET_ALL}")
@@ -229,18 +265,37 @@ def main():
             )
             print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")
 
+            # Snapshot audit log size so we can report decisions added during this request
+            try:
+                audit_start_size = os.path.getsize(AUDIT_LOG_PATH)
+            except OSError:
+                audit_start_size = 0
+
             # Execute through orchestrator
             response = orchestrator.process_user_request(user_input)
 
-            # Verify execution
-            if verify_execution_in_response(response):
-                print(f"\n{Fore.GREEN}✓ COMMAND EXECUTED SUCCESSFULLY{Style.RESET_ALL}")
+            # Verify execution — supervisor's final synthesis is clean text without [DEBUG]
+            # markers, so authoritative source is the orchestrator's execution history.
+            executed_steps = len(orchestrator._execution_history)
+            if executed_steps > 0 or verify_execution_in_response(response):
+                if executed_steps:
+                    print(
+                        f"\n{Fore.GREEN}✓ {executed_steps} agent step(s) EXECUTED SUCCESSFULLY{Style.RESET_ALL}"
+                    )
+                else:
+                    print(f"\n{Fore.GREEN}✓ COMMAND EXECUTED SUCCESSFULLY{Style.RESET_ALL}")
             else:
                 print(
-                    f"\n{Fore.YELLOW}⚠️  No execution detected in response{Style.RESET_ALL}"
+                    f"\n{Fore.YELLOW}⚠️  No execution detected{Style.RESET_ALL}"
                 )
                 print(
                     f"{Fore.YELLOW}The agent may have only provided information{Style.RESET_ALL}"
+                )
+
+            new_decisions = _audit_count_for_session(audit_start_size)
+            if new_decisions:
+                print(
+                    f"{Fore.BLUE}[Audit] {new_decisions} HITL decision(s) recorded → {AUDIT_LOG_PATH}{Style.RESET_ALL}"
                 )
 
             print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")

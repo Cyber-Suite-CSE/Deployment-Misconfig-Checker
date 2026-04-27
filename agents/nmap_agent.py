@@ -1,10 +1,8 @@
 import os
 from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain.tools.render import render_text_description
-from langgraph.prebuilt import create_react_agent as create_langgraph_agent
+from uuid import uuid4
+
+from langchain.agents import create_agent
 from colorama import init, Fore, Style
 import sys
 import re
@@ -14,6 +12,12 @@ from tools.nmap_tool import execute_nmap
 from models.structured_results import NmapResult, PortInfo
 from llm_factory import create_llm
 from prompts import PromptProvider
+from agents.hitl_helpers import (
+    build_hitl,
+    describe_nmap,
+    get_checkpointer,
+    handle_interrupt_loop,
+)
 
 init(autoreset=True)
 
@@ -38,8 +42,24 @@ class NmapAgent:
         self.tools = [execute_nmap]
         print(f"{Fore.BLUE}[NMAP Agent] Tool loaded: execute_nmap{Style.RESET_ALL}")
 
-        # Create the agent using LangGraph with execution focus
-        self.agent_executor = create_langgraph_agent(self.llm, self.tools)
+        # Render the prompt body once; create_agent supplies its own ReAct scaffolding,
+        # so the {tool_names}/{tools}/{input}/{agent_scratchpad} placeholders get neutralized.
+        system_prompt = NMAP_AGENT_PROMPT.format(
+            tool_names="execute_nmap",
+            tools="execute_nmap: Executes real nmap commands and returns actual output",
+            input="",
+            agent_scratchpad="",
+        )
+
+        # HITL middleware gates the execute_nmap tool with approve / edit / reject.
+        # Each sub-agent owns its own SqliteSaver so HITL state survives Ctrl-C.
+        self.agent_executor = create_agent(
+            model=self.llm,
+            tools=self.tools,
+            system_prompt=system_prompt,
+            middleware=[build_hitl("nmap_executor", describe_nmap)],
+            checkpointer=get_checkpointer(),
+        )
 
     def process_request(self, request: str) -> Dict[str, Any]:
         """
@@ -80,25 +100,17 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 f"{Fore.MAGENTA}[NMAP Agent] Forcing tool execution...{Style.RESET_ALL}"
             )
 
-            # Create the messages with strong execution focus
-            messages = [
-                (
-                    "system",
-                    NMAP_AGENT_PROMPT.format(
-                        tool_names="execute_nmap",
-                        tools="execute_nmap: Executes real nmap commands and returns actual output",
-                        input="",
-                        agent_scratchpad="",
-                    ),
-                ),
-                ("human", execution_request),
-            ]
-
-            # Execute the agent
+            # Execute the agent (drives any number of HITL approve/edit/reject cycles)
             print(
                 f"{Fore.YELLOW}[NMAP Agent] Invoking agent executor...{Style.RESET_ALL}"
             )
-            response = self.agent_executor.invoke({"messages": messages})
+            thread_id = uuid4().hex
+            response = handle_interrupt_loop(
+                self.agent_executor.invoke,
+                initial_input={"messages": [("user", execution_request)]},
+                config={"configurable": {"thread_id": thread_id}},
+                thread_id=thread_id,
+            )
 
             # Extract the response
             if isinstance(response, dict) and "messages" in response:
@@ -111,8 +123,10 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
             else:
                 content = str(response)
 
-            # Verify execution happened
-            if "[DEBUG]" not in content and "execute_nmap" not in str(response):
+            # Verify execution happened — look across the whole response (tool messages
+            # carry [DEBUG] markers, even if the final AIMessage is a clean synthesis).
+            response_text = str(response)
+            if "[DEBUG]" not in response_text and "nmap_executor" not in response_text:
                 executed = False
                 print(
                     f"{Fore.RED}[NMAP Agent] WARNING: No tool execution detected!{Style.RESET_ALL}"
@@ -124,17 +138,17 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 # Try direct tool execution as fallback
                 if "scan" in request.lower() or "port" in request.lower():
                     if "localhost" in request.lower():
-                        fallback_result = execute_nmap("nmap localhost")
+                        fallback_result = execute_nmap.invoke({"command": "nmap localhost"})
                     elif "help" in request.lower():
-                        fallback_result = execute_nmap("nmap --help")
+                        fallback_result = execute_nmap.invoke({"command": "nmap --help"})
                     else:
                         # Extract IP if present
                         ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
                         ips = re.findall(ip_pattern, request)
                         if ips:
-                            fallback_result = execute_nmap(f"nmap {ips[0]}")
+                            fallback_result = execute_nmap.invoke({"command": f"nmap {ips[0]}"})
                         else:
-                            fallback_result = execute_nmap("nmap --help")
+                            fallback_result = execute_nmap.invoke({"command": "nmap --help"})
 
                     content = f"Direct execution result:\n{fallback_result}"
             else:
@@ -149,7 +163,6 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                 "success": True,
                 "result": content,
                 "request": request,
-                # "executed": "[DEBUG]" in content or "Direct execution" in content
                 "executed": executed,
             }
 

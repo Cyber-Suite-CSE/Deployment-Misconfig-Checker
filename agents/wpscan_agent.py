@@ -1,10 +1,8 @@
 import os
 from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain.tools.render import render_text_description
-from langgraph.prebuilt import create_react_agent as create_langgraph_agent
+from uuid import uuid4
+
+from langchain.agents import create_agent
 from colorama import init, Fore, Style
 import sys
 import re
@@ -14,6 +12,12 @@ from tools.wpscan_tool import execute_wpscan
 from models.structured_results import WPScanResult, PluginInfo, ThemeInfo
 from llm_factory import create_llm
 from prompts import PromptProvider
+from agents.hitl_helpers import (
+    build_hitl,
+    describe_wpscan,
+    get_checkpointer,
+    handle_interrupt_loop,
+)
 
 init(autoreset=True)
 
@@ -37,7 +41,20 @@ class WpscanAgent:
         self.tools = [execute_wpscan]
         print(f"{Fore.BLUE}[WPSCAN Agent] Tool loaded: execute_wpscan{Style.RESET_ALL}")
 
-        self.agent_executor = create_langgraph_agent(self.llm, self.tools)
+        system_prompt = WPSCAN_AGENT_PROMPT.format(
+            tool_names="execute_wpscan",
+            tools="execute_wpscan: Executes real wpscan commands and returns actual output",
+            input="",
+            agent_scratchpad="",
+        )
+
+        self.agent_executor = create_agent(
+            model=self.llm,
+            tools=self.tools,
+            system_prompt=system_prompt,
+            middleware=[build_hitl("wpscan_executor", describe_wpscan)],
+            checkpointer=get_checkpointer(),
+        )
 
     def process_request(self, request: str) -> Dict[str, Any]:
         """
@@ -77,23 +94,16 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                 f"{Fore.MAGENTA}[WPSCAN Agent] Forcing tool execution...{Style.RESET_ALL}"
             )
 
-            messages = [
-                (
-                    "system",
-                    WPSCAN_AGENT_PROMPT.format(
-                        tool_names="execute_wpscan",
-                        tools="execute_wpscan: Executes real wpscan commands and returns actual output",
-                        input="",
-                        agent_scratchpad="",
-                    ),
-                ),
-                ("human", execution_request),
-            ]
-
             print(
                 f"{Fore.YELLOW}[WPSCAN Agent] Invoking agent executor...{Style.RESET_ALL}"
             )
-            response = self.agent_executor.invoke({"messages": messages})
+            thread_id = uuid4().hex
+            response = handle_interrupt_loop(
+                self.agent_executor.invoke,
+                initial_input={"messages": [("user", execution_request)]},
+                config={"configurable": {"thread_id": thread_id}},
+                thread_id=thread_id,
+            )
 
             if isinstance(response, dict) and "messages" in response:
                 final_message = response["messages"][-1]
@@ -105,7 +115,8 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
             else:
                 content = str(response)
 
-            if "[DEBUG]" not in content and "execute_wpscan" not in str(response):
+            response_text = str(response)
+            if "[DEBUG]" not in response_text and "wpscan_executor" not in response_text:
                 executed = False
                 print(
                     f"{Fore.RED}[WPSCAN Agent] WARNING: No tool execution detected!{Style.RESET_ALL}"
@@ -122,13 +133,15 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                     url_pattern = r"https?://[^\s]+"
                     urls = re.findall(url_pattern, request)
                     if urls:
-                        fallback_result = execute_wpscan(f"wpscan --url {urls[0]}")
+                        fallback_result = execute_wpscan.invoke(
+                            {"command": f"wpscan --url {urls[0]}"}
+                        )
                     elif "help" in request.lower():
-                        fallback_result = execute_wpscan("wpscan --help")
+                        fallback_result = execute_wpscan.invoke({"command": "wpscan --help"})
                     else:
-                        fallback_result = execute_wpscan("wpscan --help")
+                        fallback_result = execute_wpscan.invoke({"command": "wpscan --help"})
                 else:
-                    fallback_result = execute_wpscan("wpscan --help")
+                    fallback_result = execute_wpscan.invoke({"command": "wpscan --help"})
 
                 content = f"Direct execution result:\n{fallback_result}"
             else:
@@ -142,7 +155,6 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                 "success": True,
                 "result": content,
                 "request": request,
-                # "executed": "[DEBUG]" in content or "Direct execution" in content
                 "executed": executed,
             }
 
