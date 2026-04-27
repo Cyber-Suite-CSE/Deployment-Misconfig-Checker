@@ -24,25 +24,7 @@ init(autoreset=True)
 ORCHESTRATOR_SYSTEM_PROMPT = PromptProvider.get_orchestrator_prompt("system")
 
 _DISPATCHER_GUIDANCE = """
-Use the dispatcher tools below to delegate to specialized sub-agents.
-Each dispatcher will run its sub-agent end-to-end (including any human approval).
-
-Available dispatchers:
-- run_nmap_agent(task): network scanning, port discovery, service & OS detection, NSE vuln scripts.
-  ALWAYS the first call when reconnaissance is needed.
-- run_wpscan_agent(task): WordPress vulnerability scanning, plugin/theme/user enumeration.
-- run_nikto_agent(task): generic web server vulnerability and misconfiguration scanning.
-- run_msf_passive_agent(task): PASSIVE Metasploit exploit reconnaissance (search exploits, lookup
-  CVE → modules). NEVER call this first; call only after at least one scanner has surfaced
-  vulnerabilities or services.
-
-Decision policy:
-- Pure information question with no concrete target → answer directly (no dispatcher).
-- Concrete target (IP/URL/domain) + scan/test/check intent → call the right dispatcher.
-- Each dispatcher returns a JSON string with structured findings; read it to decide
-  the next step, or to compose your final synthesis.
-- Stop calling dispatchers once you have enough to answer the original request, and reply
-  with a clear, user-friendly synthesis of all findings.
+Reminder: each dispatcher tool returns a JSON string. Parse it mentally, then decide whether to call another dispatcher or to write the final synthesis. Stop calling tools as soon as you can answer the original request.
 """
 
 
@@ -54,7 +36,7 @@ class OrchestratorAgent:
     conversation persistence so a session can be inspected/resumed across restarts.
     """
 
-    def __init__(self, orchestrator_model=None, sub_agent_model=None, temperature=0.3):
+    def __init__(self, orchestrator_model=None, sub_agent_model=None, temperature=0.0):
         self.llm = create_llm(temperature=temperature, model=orchestrator_model)
 
         if sub_agent_model is not None:
@@ -451,6 +433,12 @@ class OrchestratorAgent:
                 if isinstance(content, str) and content.strip():
                     final_text = content
                     break
+
+            if not self._execution_history:
+                print(
+                    f"{Fore.YELLOW}[Orchestrator] No dispatcher tools were called. "
+                    f"Final LLM text: {final_text[:240]!r}{Style.RESET_ALL}"
+                )
 
             print(
                 f"{Fore.GREEN}[Orchestrator] Workflow complete - {len(self._execution_history)} agent step(s){Style.RESET_ALL}"
