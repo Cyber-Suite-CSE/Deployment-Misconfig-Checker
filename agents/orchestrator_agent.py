@@ -10,6 +10,7 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 
 from agents.hitl_helpers import get_checkpointer
+from agents.masscan_agent import MasscanAgent
 from agents.metasploit_passive_agent import MetasploitPassiveAgent
 from agents.nikto_agent import NiktoAgent
 from agents.nmap_agent import NmapAgent
@@ -51,6 +52,7 @@ class OrchestratorAgent:
 
         self.tool_agents = {
             "nmap": NmapAgent(llm=sub_agent_llm),
+            "masscan": MasscanAgent(llm=sub_agent_llm),
             "wpscan": WpscanAgent(llm=sub_agent_llm),
             "nikto": NiktoAgent(llm=sub_agent_llm),
             "metasploit": MetasploitPassiveAgent(llm=sub_agent_llm),
@@ -64,6 +66,13 @@ class OrchestratorAgent:
                 "OS detection",
                 "vulnerability scanning",
                 "host discovery",
+            ],
+            "masscan": [
+                "fast Internet-scale port sweeps",
+                "large-CIDR port discovery",
+                "high packet-rate scanning",
+                "wide-range host discovery",
+                "complements nmap for port presence",
             ],
             "wpscan": [
                 "WordPress vulnerability scanning",
@@ -182,6 +191,32 @@ class OrchestratorAgent:
             finally:
                 current_card_id.reset(token)
 
+        @tool("run_masscan_agent")
+        def run_masscan_agent(task: str) -> str:
+            """Run very fast port discovery across single hosts or large IP ranges using
+            masscan. Pick this over run_nmap_agent when scanning >/16 ranges or when only
+            port presence is needed (no service/version/OS detail). Pass a specific
+            sweeping instruction (target + ports + rate hint, e.g. "fast sweep of
+            10.0.0.0/16 on web ports"). For service/version/OS detail, follow up with
+            run_nmap_agent on the discovered hosts. Returns a JSON string with open_ports
+            and a scan_summary."""
+            card_id = self._announce("masscan", task)
+            token = current_card_id.set(card_id)
+            try:
+                print(
+                    f"\n{Fore.MAGENTA}[Orchestrator] Routing to MASSCAN{Style.RESET_ALL}"
+                )
+                print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
+                result = agents["masscan"].process_request(task)
+                if not result.get("executed"):
+                    print(
+                        f"{Fore.RED}[Orchestrator] WARNING: masscan did not execute{Style.RESET_ALL}"
+                    )
+                structured = _record("masscan", task, result, card_id)
+                return json.dumps(structured, default=str)
+            finally:
+                current_card_id.reset(token)
+
         @tool("run_wpscan_agent")
         def run_wpscan_agent(task: str) -> str:
             """Run WordPress vulnerability scanning, plugin/theme/user enumeration, or version
@@ -258,6 +293,7 @@ class OrchestratorAgent:
 
         return [
             run_nmap_agent,
+            run_masscan_agent,
             run_wpscan_agent,
             run_nikto_agent,
             run_msf_passive_agent,

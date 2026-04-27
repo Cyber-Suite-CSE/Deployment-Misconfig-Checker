@@ -11,6 +11,7 @@ from textual.widgets import Markdown, RichLog, Static
 
 _AGENT_LABELS = {
     "nmap": "nmap",
+    "masscan": "masscan",
     "wpscan": "wpscan",
     "nikto": "nikto",
     "metasploit": "msf",

@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     # Runtime Dependencies
     nmap \
     nmap-scripts \
+    masscan \
     ruby \
     perl \
     libcurl \

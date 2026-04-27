@@ -11,6 +11,7 @@ from colorama import init, Fore, Style, Back
 from agents.orchestrator_agent import OrchestratorAgent
 from agents.hitl_helpers import AUDIT_LOG_PATH, CHECKPOINT_DB_PATH
 from tools.nmap_tool import validate_nmap_installed
+from tools.masscan_tool import validate_masscan_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
 from tools.metasploit_tool import validate_metasploit_connection
@@ -82,6 +83,8 @@ def print_help():
 {Fore.CYAN}▸{Style.RESET_ALL} "Check services on 192.168.1.1" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nmap -sV 192.168.1.1
 {Fore.CYAN}▸{Style.RESET_ALL} "Stealth scan example.com" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nmap -sS example.com
 {Fore.CYAN}▸{Style.RESET_ALL} "Show nmap help" → {Fore.RED}EXECUTES:{Style.RESET_ALL} nmap --help
+{Fore.CYAN}▸{Style.RESET_ALL} "Sweep 10.0.0.0/8 fast" → {Fore.RED}EXECUTES:{Style.RESET_ALL} masscan -p80,443 10.0.0.0/8 --rate=1000
+{Fore.CYAN}▸{Style.RESET_ALL} "Find open ports across 192.168.0.0/16" → {Fore.RED}EXECUTES:{Style.RESET_ALL} masscan -p1-65535 192.168.0.0/16 --rate=10000
 {Fore.CYAN}▸{Style.RESET_ALL} "Scan WordPress site https://example.com" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url https://example.com
 {Fore.CYAN}▸{Style.RESET_ALL} "Enumerate WordPress users" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url <url> --enumerate u
 {Fore.CYAN}▸{Style.RESET_ALL} "Find WordPress plugins" → {Fore.RED}EXECUTES:{Style.RESET_ALL} wpscan --url <url> --enumerate p
@@ -195,6 +198,7 @@ def main():
     print(f"{Fore.CYAN}Checking system requirements...{Style.RESET_ALL}")
 
     nmap_installed = validate_nmap_installed()
+    masscan_installed = validate_masscan_installed()
     wpscan_installed = validate_wpscan_installed()
     nikto_installed = validate_nikto_installed()
     metasploit_connected = validate_metasploit_connection()
@@ -208,6 +212,16 @@ def main():
         )
         print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install nmap")
         print(f"  {Fore.GREEN}Windows:{Style.RESET_ALL} https://nmap.org/download.html")
+
+    if not masscan_installed:
+        print(f"\n{Fore.YELLOW}⚠️  Warning: masscan not detected{Style.RESET_ALL}")
+        print(f"{Fore.RED}This system EXECUTES REAL COMMANDS!{Style.RESET_ALL}")
+        print("\nInstall masscan:")
+        print(
+            f"  {Fore.GREEN}Ubuntu/Debian:{Style.RESET_ALL} sudo apt-get install masscan"
+        )
+        print(f"  {Fore.GREEN}MacOS:{Style.RESET_ALL} brew install masscan")
+        print(f"  {Fore.GREEN}Alpine:{Style.RESET_ALL} apk add masscan")
 
     if not wpscan_installed:
         print(f"\n{Fore.YELLOW}⚠️  Warning: wpscan not detected{Style.RESET_ALL}")
@@ -241,7 +255,7 @@ def main():
             f"  {Fore.GREEN}Docker:{Style.RESET_ALL} docker run -it -p 55553:55553 metasploitframework/metasploit-framework"
         )
 
-    if not nmap_installed or not wpscan_installed or not nikto_installed:
+    if not nmap_installed or not masscan_installed or not wpscan_installed or not nikto_installed:
         print(
             f"\n{Fore.YELLOW}Or run in a container with tools pre-installed{Style.RESET_ALL}"
         )

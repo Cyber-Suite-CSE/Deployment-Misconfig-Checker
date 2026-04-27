@@ -35,6 +35,7 @@ TOOL_COMMAND_PREFIX: Dict[str, str] = {
     "nmap_executor": "nmap",
     "wpscan_executor": "wpscan",
     "nikto_executor": "nikto",
+    "masscan_executor": "masscan",
 }
 
 
@@ -138,6 +139,15 @@ def describe_nikto(tool_call, state, runtime) -> str:  # noqa: ANN001
     return (
         f"nikto_executor: WEB SCAN {target} | command='{cmd}' "
         f"(intrusive — probes web server vulns)"
+    )
+
+
+def describe_masscan(tool_call, state, runtime) -> str:  # noqa: ANN001
+    cmd = _extract_command(tool_call.get("args", {}))
+    target = _extract_target(cmd)
+    return (
+        f"masscan_executor: FAST PORT SWEEP {target} | command='{cmd}' "
+        f"(very intrusive — high packet rate, raw socket)"
     )
 
 

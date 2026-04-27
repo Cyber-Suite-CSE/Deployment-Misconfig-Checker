@@ -24,6 +24,16 @@ class NmapResult(BaseModel):
     scan_summary: str = Field(description="Brief summary of scan results")
 
 
+class MasscanResult(BaseModel):
+    """Structured masscan scan results"""
+    target: str = Field(description="Target host/IP/CIDR that was scanned")
+    open_ports: List[PortInfo] = Field(default_factory=list, description="Open ports discovered (service/version stay None — masscan doesn't fingerprint)")
+    rate: Optional[str] = Field(default=None, description="Packet rate used for the scan (e.g. '1000', '100000')")
+    total_open: int = Field(default=0, description="Total number of open ports discovered")
+    host_up: bool = Field(default=True, description="Whether at least one host responded")
+    scan_summary: str = Field(description="Brief summary of scan results")
+
+
 class PluginInfo(BaseModel):
     """Information about a WordPress plugin"""
     name: str = Field(description="Plugin name")

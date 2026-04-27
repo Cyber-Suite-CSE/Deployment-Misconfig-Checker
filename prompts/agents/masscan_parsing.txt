@@ -1,0 +1,22 @@
+Parse this masscan scan output into structured format.
+
+Raw masscan output:
+{raw_output}
+
+masscan output is one-port-per-line and looks like:
+  Discovered open port 80/tcp on 192.168.1.10
+  Discovered open port 22/tcp on 192.168.1.11
+It does NOT include service names, banners, version strings, or OS fingerprints.
+
+Extract the following information:
+1. Target host/IP/CIDR that was scanned (look in the masscan banner or infer from the discovered hosts)
+2. All open ports as PortInfo entries — for each "Discovered open port P/proto on IP" line, emit
+   {{ "port": "<P>", "protocol": "<tcp|udp>", "state": "open", "service": null, "version": null }}.
+   The IP itself goes in the scan_summary; PortInfo has no host field.
+3. Packet rate if visible in the banner (e.g. "rate: 1.00-kpps").
+4. Total number of open ports discovered.
+5. host_up = true if any open port was discovered, else false.
+6. Brief 2-3 sentence summary of the scan that mentions targets, ports scanned, and any notable findings.
+
+Be accurate and only include information that is actually present in the output.
+If a field has no data, use the default empty value.
