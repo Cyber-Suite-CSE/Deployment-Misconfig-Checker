@@ -6,7 +6,7 @@ import os
 import sys
 from concurrent.futures import Future
 from threading import Thread
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from langgraph.types import Interrupt
 from textual.app import App, ComposeResult
@@ -95,8 +95,10 @@ class CyberExecApp(App):
         self.orchestrator = orchestrator
         self.bridge = TUIBridge(self)
         self._active_card: Optional[AgentStepCard] = None
+        self._cards_by_id: Dict[str, AgentStepCard] = {}
         self._busy = False
         self._hitl_bar: Optional[HITLBar] = None
+        self._hitl_queue: List[Tuple[Interrupt, "Future[Dict[str, Any]]"]] = []
 
     # ------------------------------------------------------------------
     # Layout
@@ -163,10 +165,12 @@ class CyberExecApp(App):
         original_stdout = sys.stdout
         original_stderr = sys.stderr
         tee_stdout = TeeStdout(
-            original_stdout, lambda line: self.bridge.emit({"type": "stdout", "line": line})
+            original_stdout,
+            lambda line, cid: self.bridge.emit({"type": "stdout", "line": line, "card_id": cid}),
         )
         tee_stderr = TeeStdout(
-            original_stderr, lambda line: self.bridge.emit({"type": "stdout", "line": line})
+            original_stderr,
+            lambda line, cid: self.bridge.emit({"type": "stdout", "line": line, "card_id": cid}),
         )
         sys.stdout = tee_stdout
         sys.stderr = tee_stderr
@@ -196,15 +200,27 @@ class CyberExecApp(App):
                 step=event.get("step", 0),
             )
             self._active_card = card
+            card_id = event.get("card_id")
+            if card_id:
+                self._cards_by_id[card_id] = card
             self._append(card)
         elif kind == "step_completed":
-            target = self._active_card_for_agent(event.get("agent"))
+            card_id = event.get("card_id")
+            target = self._cards_by_id.get(card_id) if card_id else None
+            if target is None:
+                target = self._active_card_for_agent(event.get("agent"))
             if target is not None:
                 target.mark_complete(event)
+            if card_id:
+                self._cards_by_id.pop(card_id, None)
         elif kind == "stdout":
             line = event.get("line", "")
-            if self._active_card is not None:
-                self._active_card.append_line(line)
+            card_id = event.get("card_id")
+            target = self._cards_by_id.get(card_id) if card_id else None
+            if target is None:
+                target = self._active_card
+            if target is not None:
+                target.append_line(line)
         elif kind == "report":
             self._append(ReportCard(event.get("markdown", "")))
         elif kind == "error":
@@ -234,7 +250,15 @@ class CyberExecApp(App):
     # ------------------------------------------------------------------
     def show_hitl_modal(self, interrupt: Interrupt, future: "Future[Dict[str, Any]]") -> None:
         if self._hitl_bar is not None:
+            # Another tool is already waiting on the operator. Queue this one
+            # so its worker thread keeps blocking on its Future until we get
+            # to it — without this the Future would never resolve and the
+            # parallel tool call would hang indefinitely.
+            self._hitl_queue.append((interrupt, future))
             return
+        self._mount_hitl(interrupt, future)
+
+    def _mount_hitl(self, interrupt: Interrupt, future: "Future[Dict[str, Any]]") -> None:
         prompt_row = self.query_one("#prompt-row")
         prompt_row.display = False
         bar = HITLBar(interrupt, future, on_done=self._hide_hitl)
@@ -247,6 +271,10 @@ class CyberExecApp(App):
         bar = self._hitl_bar
         self._hitl_bar = None
         bar.remove()
+        if self._hitl_queue:
+            next_interrupt, next_future = self._hitl_queue.pop(0)
+            self._mount_hitl(next_interrupt, next_future)
+            return
         prompt_row = self.query_one("#prompt-row")
         prompt_row.display = True
         if not self._busy:
@@ -351,6 +379,7 @@ class CyberExecApp(App):
         for child in list(container.children):
             child.remove()
         self._active_card = None
+        self._cards_by_id.clear()
 
 
 class _HelpLine(Static):

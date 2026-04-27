@@ -15,6 +15,7 @@ from agents.nikto_agent import NiktoAgent
 from agents.nmap_agent import NmapAgent
 from agents.wpscan_agent import WpscanAgent
 from llm_factory import create_llm
+from tui.context import current_card_id
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prompts import PromptProvider
@@ -101,21 +102,32 @@ class OrchestratorAgent:
     # Dispatcher tools — each closes over self so it can record execution
     # history and forward results back to the supervisor as JSON.
     # ------------------------------------------------------------------
-    def _announce(self, agent: str, task: str) -> None:
-        """Notify the TUI (if any) that a new agent step is about to start."""
+    def _announce(self, agent: str, task: str) -> str:
+        """Notify the TUI that a new agent step is about to start.
+
+        Returns the card_id the dispatcher tool should bind into ``current_card_id``
+        so every ``print()`` emitted while this step is running — including those
+        from sub-agent tool execution on LangGraph's executor pool — routes back
+        to the right ``AgentStepCard``.
+        """
+        card_id = uuid4().hex
         if self._step_started_callback:
             self._step_started_callback(
                 {
                     "agent": agent,
                     "task": task,
                     "step": len(self._execution_history) + 1,
+                    "card_id": card_id,
                 }
             )
+        return card_id
 
     def _build_dispatcher_tools(self):
         agents = self.tool_agents
 
-        def _record(agent_name: str, task: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        def _record(
+            agent_name: str, task: str, result: Dict[str, Any], card_id: str
+        ) -> Dict[str, Any]:
             structured = agents[agent_name].parse_output(result.get("result", ""))
             entry = {
                 "agent": agent_name,
@@ -128,7 +140,11 @@ class OrchestratorAgent:
             self._execution_history.append(entry)
             if self._progress_callback:
                 self._progress_callback(
-                    {**entry, "step": len(self._execution_history)}
+                    {
+                        **entry,
+                        "step": len(self._execution_history),
+                        "card_id": card_id,
+                    }
                 )
             return structured
 
@@ -139,18 +155,22 @@ class OrchestratorAgent:
             specific scanning instruction (target + what to look for) as the task argument.
             Returns a JSON string with structured findings (open_ports, detected_services,
             vulnerabilities, etc.)."""
-            self._announce("nmap", task)
-            print(
-                f"\n{Fore.MAGENTA}[Orchestrator] Routing to NMAP{Style.RESET_ALL}"
-            )
-            print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
-            result = agents["nmap"].process_request(task)
-            if not result.get("executed"):
+            card_id = self._announce("nmap", task)
+            token = current_card_id.set(card_id)
+            try:
                 print(
-                    f"{Fore.RED}[Orchestrator] WARNING: nmap did not execute{Style.RESET_ALL}"
+                    f"\n{Fore.MAGENTA}[Orchestrator] Routing to NMAP{Style.RESET_ALL}"
                 )
-            structured = _record("nmap", task, result)
-            return json.dumps(structured, default=str)
+                print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
+                result = agents["nmap"].process_request(task)
+                if not result.get("executed"):
+                    print(
+                        f"{Fore.RED}[Orchestrator] WARNING: nmap did not execute{Style.RESET_ALL}"
+                    )
+                structured = _record("nmap", task, result, card_id)
+                return json.dumps(structured, default=str)
+            finally:
+                current_card_id.reset(token)
 
         @tool("run_wpscan_agent")
         def run_wpscan_agent(task: str) -> str:
@@ -158,18 +178,22 @@ class OrchestratorAgent:
             detection. Use after a target has been confirmed to run WordPress. Pass a specific
             scanning instruction including the WordPress URL. Returns a JSON string with
             wordpress_version, plugins_found, themes_found, users_enumerated, vulnerabilities."""
-            self._announce("wpscan", task)
-            print(
-                f"\n{Fore.MAGENTA}[Orchestrator] Routing to WPSCAN{Style.RESET_ALL}"
-            )
-            print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
-            result = agents["wpscan"].process_request(task)
-            if not result.get("executed"):
+            card_id = self._announce("wpscan", task)
+            token = current_card_id.set(card_id)
+            try:
                 print(
-                    f"{Fore.RED}[Orchestrator] WARNING: wpscan did not execute{Style.RESET_ALL}"
+                    f"\n{Fore.MAGENTA}[Orchestrator] Routing to WPSCAN{Style.RESET_ALL}"
                 )
-            structured = _record("wpscan", task, result)
-            return json.dumps(structured, default=str)
+                print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
+                result = agents["wpscan"].process_request(task)
+                if not result.get("executed"):
+                    print(
+                        f"{Fore.RED}[Orchestrator] WARNING: wpscan did not execute{Style.RESET_ALL}"
+                    )
+                structured = _record("wpscan", task, result, card_id)
+                return json.dumps(structured, default=str)
+            finally:
+                current_card_id.reset(token)
 
         @tool("run_nikto_agent")
         def run_nikto_agent(task: str) -> str:
@@ -177,18 +201,22 @@ class OrchestratorAgent:
             outdated software). Use for non-WordPress web servers, or in addition to WPScan.
             Pass a specific scanning instruction including the URL/host. Returns a JSON string
             with server_info, vulnerabilities, ssl_info, misconfigurations, outdated_software."""
-            self._announce("nikto", task)
-            print(
-                f"\n{Fore.MAGENTA}[Orchestrator] Routing to NIKTO{Style.RESET_ALL}"
-            )
-            print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
-            result = agents["nikto"].process_request(task)
-            if not result.get("executed"):
+            card_id = self._announce("nikto", task)
+            token = current_card_id.set(card_id)
+            try:
                 print(
-                    f"{Fore.RED}[Orchestrator] WARNING: nikto did not execute{Style.RESET_ALL}"
+                    f"\n{Fore.MAGENTA}[Orchestrator] Routing to NIKTO{Style.RESET_ALL}"
                 )
-            structured = _record("nikto", task, result)
-            return json.dumps(structured, default=str)
+                print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
+                result = agents["nikto"].process_request(task)
+                if not result.get("executed"):
+                    print(
+                        f"{Fore.RED}[Orchestrator] WARNING: nikto did not execute{Style.RESET_ALL}"
+                    )
+                structured = _record("nikto", task, result, card_id)
+                return json.dumps(structured, default=str)
+            finally:
+                current_card_id.reset(token)
 
         @tool("run_msf_passive_agent")
         def run_msf_passive_agent(task: str) -> str:
@@ -197,22 +225,26 @@ class OrchestratorAgent:
             at least one scan has produced vulnerabilities or service information. Pass the
             vulnerability summary as the task argument. Returns a JSON string with exploits_found
             and a scan_summary."""
-            self._announce("metasploit", task)
-            print(
-                f"\n{Fore.MAGENTA}[Orchestrator] Routing to METASPLOIT (passive){Style.RESET_ALL}"
-            )
-            print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
-            vulnerability_data = self._collect_vulnerability_data(self._execution_history)
-            print(
-                f"{Fore.YELLOW}[Orchestrator] Passing vulnerability data to Metasploit agent{Style.RESET_ALL}"
-            )
-            result = agents["metasploit"].process_request(task, vulnerability_data)
-            if not result.get("executed"):
+            card_id = self._announce("metasploit", task)
+            token = current_card_id.set(card_id)
+            try:
                 print(
-                    f"{Fore.RED}[Orchestrator] WARNING: msf passive did not execute{Style.RESET_ALL}"
+                    f"\n{Fore.MAGENTA}[Orchestrator] Routing to METASPLOIT (passive){Style.RESET_ALL}"
                 )
-            structured = _record("metasploit", task, result)
-            return json.dumps(structured, default=str)
+                print(f"{Fore.WHITE}Task: {task}{Style.RESET_ALL}")
+                vulnerability_data = self._collect_vulnerability_data(self._execution_history)
+                print(
+                    f"{Fore.YELLOW}[Orchestrator] Passing vulnerability data to Metasploit agent{Style.RESET_ALL}"
+                )
+                result = agents["metasploit"].process_request(task, vulnerability_data)
+                if not result.get("executed"):
+                    print(
+                        f"{Fore.RED}[Orchestrator] WARNING: msf passive did not execute{Style.RESET_ALL}"
+                    )
+                structured = _record("metasploit", task, result, card_id)
+                return json.dumps(structured, default=str)
+            finally:
+                current_card_id.reset(token)
 
         return [
             run_nmap_agent,

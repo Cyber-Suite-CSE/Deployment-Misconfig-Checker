@@ -10,11 +10,15 @@ debugging the TUI itself with ``textual run --dev``).
 from __future__ import annotations
 
 import threading
-from typing import Callable, TextIO
+from typing import Callable, Optional, TextIO
+
+from .context import current_card_id
 
 
 class TeeStdout:
-    def __init__(self, original: TextIO, on_line: Callable[[str], None]) -> None:
+    def __init__(
+        self, original: TextIO, on_line: Callable[[str, Optional[str]], None]
+    ) -> None:
         self._original = original
         self._on_line = on_line
         self._buf = ""
@@ -27,9 +31,10 @@ class TeeStdout:
             self._buf += s
             lines = self._buf.split("\n")
             self._buf = lines.pop()  # last chunk has no trailing newline yet
+            card_id = current_card_id.get()
             for line in lines:
                 try:
-                    self._on_line(line)
+                    self._on_line(line, card_id)
                 except Exception:
                     pass
         try:
