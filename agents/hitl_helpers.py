@@ -27,6 +27,57 @@ AUDIT_LOG_PATH = os.path.join(_PROJECT_ROOT, "logs", "hitl_decisions.jsonl")
 CHECKPOINT_DB_PATH = os.path.join(_PROJECT_ROOT, ".langgraph_checkpoint.sqlite")
 
 
+# Tool name → leading token that must remain in the `command` arg.
+# Editing UI strips this on display and re-prepends it on submit so the user
+# physically cannot remove the executable name.
+TOOL_COMMAND_PREFIX: Dict[str, str] = {
+    "nmap_executor": "nmap",
+    "wpscan_executor": "wpscan",
+    "nikto_executor": "nikto",
+}
+
+
+def split_locked_prefix(tool_name: str, key: str, value: Any):
+    """Return (locked_prefix, editable_suffix) for the command arg of a gated tool.
+
+    Returns (None, value) if no lock applies (different tool, different arg key,
+    non-string value, or command starts with an unexpected token).
+    """
+    if key != "command" or not isinstance(value, str):
+        return None, value
+    prefix = TOOL_COMMAND_PREFIX.get(tool_name)
+    if not prefix:
+        return None, value
+    stripped = value.lstrip()
+    if not stripped.startswith(prefix):
+        return None, value
+    return prefix, stripped[len(prefix):].lstrip()
+
+
+def apply_locked_prefix(prefix: Optional[str], edited_suffix: str) -> str:
+    """Reattach a locked tool prefix to an edited command suffix."""
+    if prefix is None:
+        return edited_suffix
+    return f"{prefix} {edited_suffix.lstrip()}".rstrip()
+
+
+def format_rejection_message(tool_name: str, reason: str) -> str:
+    """Wrap an operator's rejection reason as a directive ToolMessage body.
+
+    The wrapped text is what the agent's LLM sees, so it reads like an
+    instruction rather than a bare error string. Audit logs record the raw
+    reason separately.
+    """
+    reason = (reason or "").strip() or "rejected by operator"
+    return (
+        f"OPERATOR REJECTED `{tool_name}`. Reason: {reason}\n"
+        "Revise your approach using this feedback. "
+        "Do NOT repeat the same tool call. "
+        "If the reason supplies a corrected target, parameter, or scope, use it. "
+        "If the reason is vague, ask the user via your final message instead of retrying."
+    )
+
+
 def get_checkpointer(*, db_path: str = CHECKPOINT_DB_PATH):
     """Open a fresh SqliteSaver against the shared project checkpoint DB.
 
@@ -121,12 +172,27 @@ def _read_line(prompt: str) -> str:
         return ""
 
 
-def _edit_args(original: Dict[str, Any]) -> Dict[str, Any]:
+def _edit_args(original: Dict[str, Any], *, tool_name: str) -> Dict[str, Any]:
     print(
         f"{Fore.YELLOW}[HITL] Edit mode — press Enter to keep current value{Style.RESET_ALL}"
     )
     edited: Dict[str, Any] = {}
     for key, value in original.items():
+        locked_prefix, editable_value = split_locked_prefix(tool_name, key, value)
+        if locked_prefix is not None:
+            print(
+                f"  {Fore.CYAN}{key}{Style.RESET_ALL} = "
+                f"{Fore.MAGENTA}{locked_prefix}{Style.RESET_ALL} "
+                f"{Fore.WHITE}{editable_value}{Style.RESET_ALL} "
+                f"{Style.DIM}(prefix locked){Style.RESET_ALL}"
+            )
+            new_raw = _read_line(f"  new args after '{locked_prefix}' > ").strip()
+            if not new_raw:
+                edited[key] = value
+                continue
+            edited[key] = apply_locked_prefix(locked_prefix, new_raw)
+            continue
+
         current = json.dumps(value, default=str) if not isinstance(value, str) else value
         print(f"  {Fore.CYAN}{key}{Style.RESET_ALL} = {Fore.WHITE}{current}{Style.RESET_ALL}")
         new_raw = _read_line(f"  new {key} > ").strip()
@@ -209,14 +275,20 @@ def _cli_prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
                 print(f"  {Fore.GREEN}→ approved{Style.RESET_ALL}")
                 break
             if choice in ("r", "reject"):
-                reason = _read_line(
+                raw_reason = _read_line(
                     f"  {Fore.RED}reason{Style.RESET_ALL} > "
                 ).strip() or "rejected by operator"
-                decisions.append({"type": "reject", "message": reason})
-                print(f"  {Fore.RED}→ rejected: {reason}{Style.RESET_ALL}")
+                decisions.append(
+                    {
+                        "type": "reject",
+                        "message": format_rejection_message(name, raw_reason),
+                        "raw_reason": raw_reason,
+                    }
+                )
+                print(f"  {Fore.RED}→ rejected: {raw_reason}{Style.RESET_ALL}")
                 break
             if choice in ("e", "edit"):
-                edited = _edit_args(args)
+                edited = _edit_args(args, tool_name=name)
                 decisions.append(
                     {
                         "type": "edit",
@@ -258,7 +330,7 @@ def audit_log(
                     decision.get("edited_action", {}).get("args")
                 )
             elif decision.get("type") == "reject":
-                entry["reason"] = decision.get("message")
+                entry["reason"] = decision.get("raw_reason") or decision.get("message")
             fh.write(json.dumps(entry, default=str) + "\n")
             written += 1
     return written

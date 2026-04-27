@@ -126,7 +126,12 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
             # Verify execution happened — look across the whole response (tool messages
             # carry [DEBUG] markers, even if the final AIMessage is a clean synthesis).
             response_text = str(response)
-            if "[DEBUG]" not in response_text and "nmap_executor" not in response_text:
+            rejected_by_operator = "OPERATOR REJECTED" in response_text
+            if rejected_by_operator:
+                # Operator deliberately rejected the call; the agent's revised
+                # response (or clarification ask) is the truthful result.
+                executed = False
+            elif "[DEBUG]" not in response_text and "nmap_executor" not in response_text:
                 executed = False
                 print(
                     f"{Fore.RED}[NMAP Agent] WARNING: No tool execution detected!{Style.RESET_ALL}"

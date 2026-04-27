@@ -24,6 +24,9 @@ EXAMPLES OF WHAT YOU MUST DO:
 Available tool: {tool_names}
 Tool descriptions: {tools}
 
+HUMAN-IN-THE-LOOP REJECTIONS:
+If a tool message arrives with content beginning "OPERATOR REJECTED", treat it as binding feedback from the user. Read the reason carefully, adjust the command (target, flags, scope) to honor the correction, and issue a NEW execute_nmap call that reflects the change. Do NOT re-issue the rejected call verbatim. If the reason is too vague to act on, stop calling tools and reply asking the user for clarification.
+
 REMEMBER: Your response MUST include actual tool execution. If you don't see [DEBUG] output in your response, you did it wrong!
 
 Current request that you MUST EXECUTE: {input}

@@ -22,6 +22,12 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Input, Static
 
+from agents.hitl_helpers import (
+    apply_locked_prefix,
+    format_rejection_message,
+    split_locked_prefix,
+)
+
 
 class HITLBar(Vertical):
     """Inline HITL bar.
@@ -148,9 +154,21 @@ class HITLBar(Vertical):
             args = req.get("args", {}) or {}
             key = self._edit_keys[self._edit_idx]
             current = self._edited.get(key, args.get(key))
-            initial = current if isinstance(current, str) else json.dumps(current, default=str)
-            title.update(f"edit · {req.get('name', '<unknown>')}")
-            body.update(f"{key} ({self._edit_idx + 1}/{len(self._edit_keys)})")
+            tool_name = req.get("name", "")
+            locked_prefix, editable_value = split_locked_prefix(tool_name, key, current)
+            if locked_prefix is not None:
+                initial = editable_value if isinstance(editable_value, str) else ""
+                placeholder = f"args after '{locked_prefix}'"
+                body_text = (
+                    f"{key}: [bold]{locked_prefix}[/bold] [dim](locked)[/dim] "
+                    f"· {self._edit_idx + 1}/{len(self._edit_keys)}"
+                )
+            else:
+                initial = current if isinstance(current, str) else json.dumps(current, default=str)
+                placeholder = key
+                body_text = f"{key} ({self._edit_idx + 1}/{len(self._edit_keys)})"
+            title.update(f"edit · {tool_name or '<unknown>'}")
+            body.update(body_text)
             body.display = True
             actions.update("")
             actions.display = False
@@ -158,7 +176,7 @@ class HITLBar(Vertical):
             hint.display = True
             inp.display = True
             inp.value = initial
-            inp.placeholder = key
+            inp.placeholder = placeholder
             inp.focus()
             return
 
@@ -260,7 +278,11 @@ class HITLBar(Vertical):
             key = self._edit_keys[self._edit_idx]
             raw = event.value
             original = args.get(key)
-            if isinstance(original, str):
+            tool_name = req.get("name", "")
+            locked_prefix, _ = split_locked_prefix(tool_name, key, original)
+            if locked_prefix is not None:
+                self._edited[key] = apply_locked_prefix(locked_prefix, raw)
+            elif isinstance(original, str):
                 self._edited[key] = raw
             else:
                 try:
@@ -282,8 +304,14 @@ class HITLBar(Vertical):
             else:
                 self._refresh_view()
         elif self._mode == "reject":
-            reason = event.value.strip() or "rejected by operator"
-            self._decisions[self._idx] = {"type": "reject", "message": reason}
+            req = self._action_requests[self._idx]
+            tool_name = req.get("name", "")
+            raw_reason = event.value.strip() or "rejected by operator"
+            self._decisions[self._idx] = {
+                "type": "reject",
+                "message": format_rejection_message(tool_name, raw_reason),
+                "raw_reason": raw_reason,
+            }
             self._mode = "choose"
             self._advance()
 
