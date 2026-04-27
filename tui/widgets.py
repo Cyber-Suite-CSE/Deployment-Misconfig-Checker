@@ -22,11 +22,14 @@ class UserMessageCard(Static):
     UserMessageCard {
         margin-top: 1;
         height: auto;
+        color: #ffffff;
+        background: $surface;
+        padding: 1 1;
     }
     """
 
     def __init__(self, text: str) -> None:
-        super().__init__(f"[dim]>[/dim] {text}")
+        super().__init__(f"[bold #7aa2f7]❯[/bold #7aa2f7] {text}")
 
 
 class WelcomeCard(Static):

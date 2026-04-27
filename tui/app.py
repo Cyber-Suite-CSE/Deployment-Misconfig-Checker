@@ -50,7 +50,8 @@ class CyberExecApp(App):
     }
     #prompt-prefix {
         width: 2;
-        color: $warning;
+        color: #7aa2f7;
+        text-style: bold;
         height: 1;
     }
     #prompt {
