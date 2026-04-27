@@ -106,6 +106,7 @@ class OrchestratorAgent:
         # Per-request execution log; reset at the start of every public entry point.
         self._execution_history: List[Dict[str, Any]] = []
         self._progress_callback = None
+        self._step_started_callback = None
 
         self.supervisor = create_agent(
             model=self.llm,
@@ -118,6 +119,17 @@ class OrchestratorAgent:
     # Dispatcher tools — each closes over self so it can record execution
     # history and forward results back to the supervisor as JSON.
     # ------------------------------------------------------------------
+    def _announce(self, agent: str, task: str) -> None:
+        """Notify the TUI (if any) that a new agent step is about to start."""
+        if self._step_started_callback:
+            self._step_started_callback(
+                {
+                    "agent": agent,
+                    "task": task,
+                    "step": len(self._execution_history) + 1,
+                }
+            )
+
     def _build_dispatcher_tools(self):
         agents = self.tool_agents
 
@@ -145,6 +157,7 @@ class OrchestratorAgent:
             specific scanning instruction (target + what to look for) as the task argument.
             Returns a JSON string with structured findings (open_ports, detected_services,
             vulnerabilities, etc.)."""
+            self._announce("nmap", task)
             print(
                 f"\n{Fore.MAGENTA}[Orchestrator] Routing to NMAP{Style.RESET_ALL}"
             )
@@ -163,6 +176,7 @@ class OrchestratorAgent:
             detection. Use after a target has been confirmed to run WordPress. Pass a specific
             scanning instruction including the WordPress URL. Returns a JSON string with
             wordpress_version, plugins_found, themes_found, users_enumerated, vulnerabilities."""
+            self._announce("wpscan", task)
             print(
                 f"\n{Fore.MAGENTA}[Orchestrator] Routing to WPSCAN{Style.RESET_ALL}"
             )
@@ -181,6 +195,7 @@ class OrchestratorAgent:
             outdated software). Use for non-WordPress web servers, or in addition to WPScan.
             Pass a specific scanning instruction including the URL/host. Returns a JSON string
             with server_info, vulnerabilities, ssl_info, misconfigurations, outdated_software."""
+            self._announce("nikto", task)
             print(
                 f"\n{Fore.MAGENTA}[Orchestrator] Routing to NIKTO{Style.RESET_ALL}"
             )
@@ -200,6 +215,7 @@ class OrchestratorAgent:
             at least one scan has produced vulnerabilities or service information. Pass the
             vulnerability summary as the task argument. Returns a JSON string with exploits_found
             and a scan_summary."""
+            self._announce("metasploit", task)
             print(
                 f"\n{Fore.MAGENTA}[Orchestrator] Routing to METASPLOIT (passive){Style.RESET_ALL}"
             )
@@ -406,11 +422,17 @@ class OrchestratorAgent:
     # ------------------------------------------------------------------
     # Public entry points
     # ------------------------------------------------------------------
-    def process_user_request(self, user_request: str) -> str:
+    def process_user_request(
+        self,
+        user_request: str,
+        progress_callback=None,
+        step_started_callback=None,
+    ) -> str:
         """Drive the supervisor agent end-to-end and return its final synthesis text."""
         try:
             self._execution_history = []
-            self._progress_callback = None
+            self._progress_callback = progress_callback
+            self._step_started_callback = step_started_callback
             print(
                 f"{Fore.CYAN}[Orchestrator] Supervisor processing request{Style.RESET_ALL}"
             )
@@ -439,6 +461,9 @@ class OrchestratorAgent:
             error_msg = f"Orchestrator error: {str(e)}"
             print(f"{Fore.RED}[Orchestrator] {error_msg}{Style.RESET_ALL}")
             return f"❌ {error_msg}"
+        finally:
+            self._progress_callback = None
+            self._step_started_callback = None
 
     def run_workflow(
         self,

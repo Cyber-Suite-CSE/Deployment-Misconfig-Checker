@@ -143,7 +143,23 @@ def _edit_args(original: Dict[str, Any]) -> Dict[str, Any]:
     return edited
 
 
+_prompter: Optional[Callable[[Interrupt], Dict[str, Any]]] = None
+
+
+def set_prompter(fn: Optional[Callable[[Interrupt], Dict[str, Any]]]) -> None:
+    """Install a custom interrupt prompter (e.g. a TUI). Pass None to restore CLI."""
+    global _prompter
+    _prompter = fn
+
+
 def prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
+    """Dispatch to the active prompter (TUI if registered, else CLI)."""
+    if _prompter is not None:
+        return _prompter(interrupt)
+    return _cli_prompt_for_decision(interrupt)
+
+
+def _cli_prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
     """Render an interrupt at the CLI and return a Command(resume=...) payload.
 
     Decisions are returned in the same order as ``interrupt.value['action_requests']``.

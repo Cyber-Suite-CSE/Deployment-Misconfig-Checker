@@ -227,6 +227,19 @@ def main():
         print(f"{Fore.RED}Failed to initialize: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
+    # If --tui was passed, hand off to the Textual front-end and skip the REPL.
+    if "--tui" in sys.argv:
+        try:
+            from tui import run_tui
+        except ImportError as e:
+            print(
+                f"{Fore.RED}Failed to import TUI: {e}{Style.RESET_ALL}\n"
+                f"Install dependencies: {Fore.GREEN}pip install -r requirements.txt{Style.RESET_ALL}"
+            )
+            sys.exit(1)
+        run_tui(orchestrator)
+        return
+
     # Main loop
     while True:
         try:
