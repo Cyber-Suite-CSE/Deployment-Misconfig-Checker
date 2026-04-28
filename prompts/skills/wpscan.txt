@@ -17,6 +17,21 @@ url
   "https://example.com" or "http://blog.local/wp". An IP without a
   scheme is rejected by the validator.
 
+═════════════════════════════════════════════════════════════════
+PORT HANDLING
+═════════════════════════════════════════════════════════════════
+
+Always append the port number to the --url value.  Services
+discovered by other tools (e.g. nmap) often report only an IP
+address with no DNS hostname, and may run on non-standard ports
+(8080, 8443, etc.).  Without an explicit port, WPScan defaults
+to 80/443 and will miss services bound elsewhere.
+
+  Correct:   --url http://192.168.1.50:8080
+  Correct:   --url https://10.0.0.1:443
+  Correct:   --url http://localhost:8080
+  Wrong:     --url http://192.168.1.50          ← may miss the service
+
 ═══════════════════════════════════════════════════════════════
 ENUMERATE — WHAT TO SEARCH FOR
 ═══════════════════════════════════════════════════════════════
@@ -75,10 +90,14 @@ EXAMPLES
 "Find vulnerable plugins on https://site.com"
   url="https://site.com", enumerate=["plugins-vulnerable"]
 
-"Aggressive scan of https://site.com"
-  url="https://site.com",
-  detection_mode="aggressive", plugins_detection="aggressive",
-  plugins_version_detection="aggressive"
+"Scan a WordPress site found on a non-standard port"
+  wpscan --url http://192.168.1.50:8080
+
+"Scan WordPress running on localhost"
+  wpscan --url http://localhost:8080
+
+"How does wpscan work?"
+  wpscan --help
 
 ═══════════════════════════════════════════════════════════════
 LIMITS
