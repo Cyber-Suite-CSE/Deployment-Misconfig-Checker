@@ -42,6 +42,7 @@ class MasscanAgent:
         print(f"{Fore.BLUE}[MASSCAN Agent] Tool loaded: execute_masscan{Style.RESET_ALL}")
 
         system_prompt = MASSCAN_AGENT_PROMPT.format(
+            skill=PromptProvider.get_skill("masscan"),
             tool_names="execute_masscan",
             tools="execute_masscan: Executes real masscan commands and returns actual output",
             input="",

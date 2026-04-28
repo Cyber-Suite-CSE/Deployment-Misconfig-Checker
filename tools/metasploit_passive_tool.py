@@ -28,6 +28,17 @@ def get_msf_client() -> MsfRpcClient:
     return _msf_client
 
 
+def validate_metasploit_connection() -> bool:
+    """Check if Metasploit RPC service is reachable."""
+    try:
+        get_msf_client()
+        print(f"{Fore.GREEN}✓ Metasploit RPC connection established{Style.RESET_ALL}")
+        return True
+    except Exception as e:
+        print(f"{Fore.YELLOW}ℹ️  Metasploit RPC not available: {str(e)}{Style.RESET_ALL}")
+        return False
+
+
 @tool
 def list_available_exploits(vulnerability_keywords: str, max_results: int = 10) -> str:
     """

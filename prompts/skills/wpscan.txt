@@ -1,0 +1,84 @@
+═══════════════════════════════════════════════════════════════
+WPSCAN OPERATIONAL SKILL
+═══════════════════════════════════════════════════════════════
+
+PURPOSE
+WPScan probes a target URL to identify the WordPress version, installed
+plugins/themes, enumerated users, and known CVEs. It needs an HTTP(S)
+URL — not an IP — and only works when the target is actually a
+WordPress site.
+
+═══════════════════════════════════════════════════════════════
+COMMAND SHAPE
+═══════════════════════════════════════════════════════════════
+
+  wpscan --url <https-url> [extra flags]
+
+Always pass --url with a full scheme (http:// or https://).
+
+═══════════════════════════════════════════════════════════════
+AUTO-INJECTED FLAGS — DO NOT DUPLICATE
+═══════════════════════════════════════════════════════════════
+
+The execute_wpscan tool auto-injects these on any --url scan, so the
+LLM should NOT add them itself:
+
+  --enumerate ap,at,u           (all plugins, all themes, users)
+  --plugins-detection aggressive
+  --random-user-agent
+  --api-token $WPSCAN_API_TOKEN  (only if env var is set)
+
+You only need to pass --enumerate if the user asks for a *narrower*
+enumeration (e.g. "only enumerate users" → --enumerate u).
+
+═══════════════════════════════════════════════════════════════
+COMMON FLAG REFERENCE
+═══════════════════════════════════════════════════════════════
+
+--enumerate <flags>   What to enumerate. Single-letter codes:
+                        u    users
+                        p    plugins (vulnerable only)
+                        ap   all plugins
+                        t    themes (vulnerable only)
+                        at   all themes
+                        Combine with commas: --enumerate u,ap,at
+
+--detection-mode      passive | mixed | aggressive
+                      Aggressive is loud but most thorough.
+
+--plugins-version-detection   passive | mixed | aggressive
+
+--random-user-agent   Rotate UA on each request.
+
+--api-token <token>   Use the WPVulnDB API for vuln lookup.
+                      The tool reads $WPSCAN_API_TOKEN automatically.
+
+--passwords <file>    Brute-force a wordlist against a known user.
+                      Pair with --usernames or --username.
+                      Only use when the user explicitly asks for
+                      brute-force / password testing.
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Scan the WordPress site at https://example.com"
+  wpscan --url https://example.com
+
+"Enumerate only users on https://blog.example.com"
+  wpscan --url https://blog.example.com --enumerate u
+
+"Find vulnerable plugins on https://site.com"
+  wpscan --url https://site.com --enumerate p
+
+"How does wpscan work?"
+  wpscan --help
+
+═══════════════════════════════════════════════════════════════
+LIMITS
+═══════════════════════════════════════════════════════════════
+
+- File-output flags (--output, -o, --format, --log) are stripped
+  by the tool — output streams back to you instead.
+- WPScan can rate-limit itself; large sites may take minutes.
+- Without a $WPSCAN_API_TOKEN, vuln lookups are limited.

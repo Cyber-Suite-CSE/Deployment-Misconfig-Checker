@@ -116,7 +116,7 @@ def execute_nikto(command: str, safe_mode: bool = True) -> str:
         if stdout:
             print(f"{Fore.WHITE}{stdout}{Style.RESET_ALL}")
         if stderr:
-             print(f"{Fore.RED}{stderr}{Style.RESET_ALL}")
+            print(f"{Fore.RED}{stderr}{Style.RESET_ALL}")
 
         print(f"{Fore.GREEN}[DEBUG] Command execution completed{Style.RESET_ALL}")
         print(f"{Fore.BLUE}[DEBUG] Return code: {Fore.WHITE}{returncode}{Style.RESET_ALL}")

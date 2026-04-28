@@ -45,6 +45,7 @@ class NmapAgent:
         # Render the prompt body once; create_agent supplies its own ReAct scaffolding,
         # so the {tool_names}/{tools}/{input}/{agent_scratchpad} placeholders get neutralized.
         system_prompt = NMAP_AGENT_PROMPT.format(
+            skill=PromptProvider.get_skill("nmap"),
             tool_names="execute_nmap",
             tools="execute_nmap: Executes real nmap commands and returns actual output",
             input="",

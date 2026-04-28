@@ -62,49 +62,59 @@ class SlidingWindowDisplay:
         print()
 
 
-def stream_output_with_sliding_window(process, max_window_lines=10):
+def stream_output_with_sliding_window(process, max_window_lines=10, timeout=None):
     display = SlidingWindowDisplay(max_lines=max_window_lines)
     display.initialize_display()
-    
+
     full_output = []
     full_stderr = []
-    
+
     def read_stream(stream, is_stderr=False):
         try:
             for line in iter(stream.readline, ""):
                 if not line:
                     break
-                    
+
                 line = line.rstrip()
-                
+
                 if is_stderr:
                     full_stderr.append(line)
                 else:
                     full_output.append(line)
-                
+
                 display.add_line(line)
         except Exception as e:
             display.add_line(f"Error reading stream: {str(e)}")
-    
+
     stdout_thread = threading.Thread(target=read_stream, args=(process.stdout, False))
     stderr_thread = threading.Thread(target=read_stream, args=(process.stderr, True))
-    
+
     stdout_thread.daemon = True
     stderr_thread.daemon = True
-    
+
     stdout_thread.start()
     stderr_thread.start()
-    
-    process.wait()
-    
+
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Kill the runaway process and surface a TimeoutExpired so the caller's
+        # existing timeout branch handles the message uniformly.
+        process.kill()
+        process.wait()
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
+        display.finalize("\n".join(full_output))
+        raise
+
     stdout_thread.join(timeout=2)
     stderr_thread.join(timeout=2)
-    
+
     full_output_str = "\n".join(full_output)
     full_stderr_str = "\n".join(full_stderr)
-    
+
     display.finalize(full_output_str)
-    
+
     return full_output_str, full_stderr_str, process.returncode
 
 
@@ -226,7 +236,9 @@ def execute_wpscan(command: str, safe_mode: bool = True) -> str:
             universal_newlines=True
         )
         
-        stdout, stderr, returncode = stream_output_with_sliding_window(process, max_window_lines=12)
+        stdout, stderr, returncode = stream_output_with_sliding_window(
+            process, max_window_lines=12, timeout=600
+        )
         
         print(f"{Fore.GREEN}[DEBUG] Command execution completed{Style.RESET_ALL}")
         print(f"{Fore.BLUE}[DEBUG] Return code: {Fore.WHITE}{returncode}{Style.RESET_ALL}")

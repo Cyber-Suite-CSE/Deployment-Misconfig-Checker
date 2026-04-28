@@ -1,0 +1,94 @@
+═══════════════════════════════════════════════════════════════
+MASSCAN OPERATIONAL SKILL
+═══════════════════════════════════════════════════════════════
+
+PURPOSE
+masscan is an internet-scale port discovery tool. It is the fastest
+way to find open ports across a /16 or /24, but it does NOT do
+service detection, version probing, or OS fingerprinting. Pair it
+with nmap for follow-up service identification.
+
+═══════════════════════════════════════════════════════════════
+COMMAND SHAPE — ALWAYS THESE THREE PIECES
+═══════════════════════════════════════════════════════════════
+
+  masscan -p<ports> <target> --rate=<N>
+
+Every real scan MUST specify:
+  1. Ports     -p<ports>     There is NO default port set.
+  2. Target    <target>      IP, range, or CIDR.
+  3. Rate      --rate=<N>    Packets per second.
+
+Forget any of these and the scan does nothing useful.
+
+═══════════════════════════════════════════════════════════════
+PORT RANGE SYNTAX
+═══════════════════════════════════════════════════════════════
+
+  -p80                Single port
+  -p80,443,8080       Comma-separated list
+  -p1-65535           Range (full TCP space)
+  -p22,80-100,443     Mixed
+  -pU:53,U:161        UDP ports (prefix with U:)
+
+═══════════════════════════════════════════════════════════════
+RATE GUIDANCE
+═══════════════════════════════════════════════════════════════
+
+  --rate=100          Polite. WAN-safe baseline.
+  --rate=1000         Default for /24 scans.       (PREFERRED on LAN)
+  --rate=10000        For /16 sweeps.
+  --rate=100000+      Only on dedicated lab links — will saturate
+                      a typical home/office uplink.
+
+When in doubt, start at 1000.
+
+═══════════════════════════════════════════════════════════════
+COMMON FLAGS
+═══════════════════════════════════════════════════════════════
+
+-p<ports>           Ports (required).
+--rate=<N>          Packets/second (required).
+--banners           Pull lightweight banners from open ports.
+--source-ip <ip>    Spoof source IP (advanced; rarely needed).
+--exclude <ip>      Skip an IP/range you must not touch.
+--excludefile <f>   Same, from a file.
+-iL <file>          Read targets from a file.
+
+═══════════════════════════════════════════════════════════════
+ROOT REQUIREMENT
+═══════════════════════════════════════════════════════════════
+
+masscan needs raw socket access on most systems. The tool prepends
+sudo automatically for real scans; --help / --version / --regress
+are exempt.
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Sweep 10.0.0.0/24 fast"
+  masscan -p1-65535 10.0.0.0/24 --rate=1000
+
+"Find web servers across 192.168.0.0/16"
+  masscan -p80,443,8080,8443 192.168.0.0/16 --rate=10000
+
+"Quick check for SSH on this subnet"
+  masscan -p22 192.168.1.0/24 --rate=1000
+
+"Scan UDP DNS across the lab range"
+  masscan -pU:53 10.0.0.0/16 --rate=5000
+
+"How does masscan work?"
+  masscan --help
+
+═══════════════════════════════════════════════════════════════
+WHAT MASSCAN DOES NOT DO
+═══════════════════════════════════════════════════════════════
+
+- No service/version detection — use nmap -sV after.
+- No OS fingerprinting — use nmap -O.
+- No NSE scripts.
+
+If the user asks for those, run a port-discovery scan with masscan
+first, then suggest the follow-up nmap pass.

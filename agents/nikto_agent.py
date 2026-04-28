@@ -42,6 +42,7 @@ class NiktoAgent:
         print(f"{Fore.BLUE}[NIKTO Agent] Tool loaded: execute_nikto{Style.RESET_ALL}")
 
         system_prompt = NIKTO_AGENT_PROMPT.format(
+            skill=PromptProvider.get_skill("nikto"),
             tool_names="execute_nikto",
             tools="execute_nikto: Executes real nikto commands and returns actual output",
             input="",

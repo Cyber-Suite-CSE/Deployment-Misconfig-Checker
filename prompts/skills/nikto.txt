@@ -1,0 +1,73 @@
+═══════════════════════════════════════════════════════════════
+NIKTO OPERATIONAL SKILL
+═══════════════════════════════════════════════════════════════
+
+PURPOSE
+Nikto scans a web server for known vulnerabilities, dangerous files,
+outdated software, server misconfigurations, and risky HTTP methods.
+It works against any HTTP/HTTPS service — not just WordPress.
+
+═══════════════════════════════════════════════════════════════
+COMMAND SHAPE
+═══════════════════════════════════════════════════════════════
+
+  nikto -h <target> [-p <port>] [-ssl] [extra flags]
+
+-h accepts a hostname, IP, or full URL. For HTTPS pass -ssl
+(or use a https:// URL).
+
+═══════════════════════════════════════════════════════════════
+AUTO-INJECTED FLAGS — DO NOT DUPLICATE
+═══════════════════════════════════════════════════════════════
+
+The execute_nikto tool auto-injects "-ask no" if not present, to
+suppress nikto's interactive update prompt. Don't add it yourself.
+
+═══════════════════════════════════════════════════════════════
+COMMON FLAG REFERENCE
+═══════════════════════════════════════════════════════════════
+
+-h <target>           Target host/URL. Required.
+-p <port>             Port number (default 80, or 443 with -ssl).
+-ssl                  Force SSL/TLS even on a plain hostname.
+-Tuning <ids>         Restrict checks. Common IDs:
+                        1   Interesting files / risky checks
+                        2   Misconfigurations / default files
+                        3   Information disclosure
+                        4   Injection (XSS, SQLi, etc.)
+                        5   Remote file retrieval
+                        6   Denial of Service (avoid)
+                        9   SQL Injection
+                      Combine: -Tuning 1234
+-evasion <ids>        IDS evasion (1-8). Use sparingly.
+-useragent <ua>       Override the default User-Agent string.
+-Cgidirs <list>       Force-check specific CGI dirs (default: scan all).
+-Help                 Show full help (use this when user asks "how").
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Scan example.com"
+  nikto -h example.com
+
+"Check SSL config on https://site.com"
+  nikto -h https://site.com -ssl
+
+"Scan port 8080 on the box"
+  nikto -h <target> -p 8080
+
+"Just look for misconfigurations"
+  nikto -h <target> -Tuning 2
+
+"How does nikto work?"
+  nikto -Help
+
+═══════════════════════════════════════════════════════════════
+LIMITS
+═══════════════════════════════════════════════════════════════
+
+- File-output flags (-o, -output, -Format, -f, -Save) are stripped.
+- Nikto is loud and fingerprintable; not suitable for stealthy work.
+- Large hosts can take 20+ minutes; the tool's timeout is 1200s.
+- Nikto is a *signature-based* scanner. Treat findings as leads, not proof.

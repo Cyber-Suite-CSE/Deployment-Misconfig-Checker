@@ -61,13 +61,17 @@ class MetasploitPassiveAgent:
             f"{Fore.YELLOW}[MetasploitPassiveAgent] PASSIVE MODE - Will NOT execute any exploits{Style.RESET_ALL}"
         )
 
+        system_prompt = METASPLOIT_PASSIVE_AGENT_PROMPT.format(
+            skill=PromptProvider.get_skill("metasploit_passive"),
+        )
+
         # Read-only RPC lookups — auto-approve all 3 tools so the operator isn't
         # prompted on every search. The middleware is wired uniformly anyway, so
         # adding active modules later is one config change.
         self.agent_executor = create_agent(
             model=self.llm,
             tools=self.tools,
-            system_prompt=METASPLOIT_PASSIVE_AGENT_PROMPT,
+            system_prompt=system_prompt,
             middleware=[
                 build_passive_hitl(
                     [

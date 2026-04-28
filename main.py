@@ -14,7 +14,7 @@ from tools.nmap_tool import validate_nmap_installed
 from tools.masscan_tool import validate_masscan_installed
 from tools.wpscan_tool import validate_wpscan_installed
 from tools.nikto_tool import validate_nikto_installed
-from tools.metasploit_tool import validate_metasploit_connection
+from tools.metasploit_passive_tool import validate_metasploit_connection
 from llm_factory import get_current_provider
 
 init(autoreset=True)

@@ -42,6 +42,7 @@ class WpscanAgent:
         print(f"{Fore.BLUE}[WPSCAN Agent] Tool loaded: execute_wpscan{Style.RESET_ALL}")
 
         system_prompt = WPSCAN_AGENT_PROMPT.format(
+            skill=PromptProvider.get_skill("wpscan"),
             tool_names="execute_wpscan",
             tools="execute_wpscan: Executes real wpscan commands and returns actual output",
             input="",

@@ -86,6 +86,27 @@ class PromptProvider:
         return cls._load_prompt(file_path)
 
     @classmethod
+    def get_skill(cls, skill_name: str) -> str:
+        """Get a tool-specific operational skill.
+
+        Skills are reusable manuals that describe how a tool works
+        (flag references, command patterns, examples) and get injected
+        into agent system prompts via a {skill} placeholder.
+
+        Args:
+            skill_name: Skill name matching a file under prompts/skills/
+
+        Returns:
+            Skill content
+
+        Examples:
+            get_skill("nmap")
+            get_skill("metasploit_passive")
+        """
+        file_path = f"skills/{skill_name}.txt"
+        return cls._load_prompt(file_path)
+
+    @classmethod
     def get_initial_agent_task(cls, agent: str, task_type: str) -> str:
         """Get an initial agent task prompt.
 
