@@ -188,7 +188,7 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
         )
 
         try:
-            parser_llm = self.llm.with_structured_output(WPScanResult)
+            parser_llm = self.llm.with_structured_output(WPScanResult, method="function_calling")
 
             parse_prompt_template = PromptProvider.get_agent_prompt("wpscan", "parsing")
             parse_prompt = parse_prompt_template.format(raw_output=raw_output)

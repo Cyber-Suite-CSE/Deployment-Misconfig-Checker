@@ -196,7 +196,7 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
         )
 
         try:
-            parser_llm = self.llm.with_structured_output(NmapResult)
+            parser_llm = self.llm.with_structured_output(NmapResult, method="function_calling")
 
             parse_prompt_template = PromptProvider.get_agent_prompt("nmap", "parsing")
             parse_prompt = parse_prompt_template.format(raw_output=raw_output)

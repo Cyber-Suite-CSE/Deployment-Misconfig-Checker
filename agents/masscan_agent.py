@@ -185,7 +185,7 @@ EXECUTE THE COMMAND NOW using execute_masscan tool!
         )
 
         try:
-            parser_llm = self.llm.with_structured_output(MasscanResult)
+            parser_llm = self.llm.with_structured_output(MasscanResult, method="function_calling")
 
             parse_prompt_template = PromptProvider.get_agent_prompt("masscan", "parsing")
             parse_prompt = parse_prompt_template.format(raw_output=raw_output)

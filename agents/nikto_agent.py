@@ -197,7 +197,7 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
         try:
             parsing_llm = create_llm(temperature=0.1)
 
-            structured_llm = parsing_llm.with_structured_output(NiktoResult)
+            structured_llm = parsing_llm.with_structured_output(NiktoResult, method="function_calling")
 
             parsing_prompt_template = PromptProvider.get_agent_prompt(
                 "nikto", "parsing"
