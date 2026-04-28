@@ -8,6 +8,7 @@ Three responsibilities:
 
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import re
@@ -18,6 +19,8 @@ from typing import Any, Callable, Dict, List, Optional
 from colorama import Fore, Style, init
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.types import Interrupt
+
+from agents import sudo_secrets
 
 init(autoreset=True)
 
@@ -236,6 +239,67 @@ def prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
     return _cli_prompt_for_decision(interrupt)
 
 
+def _final_command_for_decision(
+    decision: Dict[str, Any], original: Dict[str, Any]
+) -> Optional[str]:
+    """Return the command string that will actually be executed for a decision.
+
+    For ``approve``/``edit`` we look at the post-decision args; for ``reject``
+    nothing runs, so we return ``None`` to skip the root check.
+    """
+    if decision.get("type") == "reject":
+        return None
+    if decision.get("type") == "edit":
+        edited = (decision.get("edited_action") or {}).get("args") or {}
+        return sudo_secrets.extract_command(
+            (decision.get("edited_action") or {}).get("name") or "",
+            edited,
+        )
+    return sudo_secrets.extract_command(
+        original.get("name") or "", original.get("args") or {}
+    )
+
+
+def maybe_capture_sudo_password(
+    decision: Dict[str, Any],
+    request: Dict[str, Any],
+    thread_id: str,
+    *,
+    password_reader: Callable[[str], str] = getpass.getpass,
+) -> bool:
+    """If the decision will execute a command that needs root, capture the password.
+
+    Stores the password in :mod:`agents.sudo_secrets` keyed by ``thread_id``
+    and annotates the decision with ``"requires_sudo": True`` so the audit
+    log can record it. Returns True if a sudo prompt was shown.
+
+    Already-cached passwords are reused — operators don't get re-prompted on
+    every privileged scan in the same session.
+    """
+    tool_name = (decision.get("edited_action") or {}).get("name") or request.get("name") or ""
+    command = _final_command_for_decision(decision, request)
+    if not command or not sudo_secrets.command_needs_root(tool_name, command):
+        return False
+
+    decision["requires_sudo"] = True
+    if sudo_secrets.has_password(thread_id):
+        return False
+
+    print(
+        f"  {Fore.YELLOW}[sudo] this command needs root — enter password "
+        f"(stored in memory only, cleared on /clear){Style.RESET_ALL}"
+    )
+    try:
+        pw = password_reader(f"  {Fore.YELLOW}[sudo] password > {Style.RESET_ALL}")
+    except (EOFError, KeyboardInterrupt):
+        print(f"  {Fore.RED}→ no password supplied; sudo will fail at runtime{Style.RESET_ALL}")
+        return False
+    if pw:
+        sudo_secrets.set_password(thread_id, pw)
+        print(f"  {Fore.GREEN}→ sudo password cached for this session{Style.RESET_ALL}")
+    return True
+
+
 def _cli_prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
     """Render an interrupt at the CLI and return a Command(resume=...) payload.
 
@@ -310,6 +374,10 @@ def _cli_prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
                 break
             print(f"  {Fore.RED}invalid choice — type a, e, or r{Style.RESET_ALL}")
 
+        thread_id = sudo_secrets.current_thread_id.get()
+        if thread_id:
+            maybe_capture_sudo_password(decisions[-1], request, thread_id)
+
     return {"decisions": decisions}
 
 
@@ -342,6 +410,8 @@ def audit_log(
                 )
             elif decision.get("type") == "reject":
                 entry["reason"] = decision.get("raw_reason") or decision.get("message")
+            if decision.get("requires_sudo"):
+                entry["requires_sudo"] = True
             fh.write(json.dumps(entry, default=str) + "\n")
             written += 1
     return written
@@ -363,6 +433,13 @@ def handle_interrupt_loop(
     Returns the final agent result dict.
     """
     from langgraph.types import Command  # local import keeps top of file lean
+
+    # Publish the thread_id on a ContextVar so:
+    #  1. the prompter (CLI / TUI) can capture a sudo password into
+    #     ``sudo_secrets`` keyed by this thread, and
+    #  2. tool wrappers running inside LangGraph's executor can look up that
+    #     password (LangGraph propagates context via ``copy_context().run``).
+    sudo_secrets.current_thread_id.set(thread_id)
 
     next_input: Any = initial_input
     while True:

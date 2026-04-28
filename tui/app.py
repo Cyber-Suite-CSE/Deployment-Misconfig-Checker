@@ -15,7 +15,7 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.suggester import SuggestFromList
 from textual.widgets import Input, Static
 
-from agents import hitl_helpers
+from agents import hitl_helpers, sudo_secrets
 
 from .bridge import TUIBridge
 from .hitl_bar import HITLBar
@@ -134,7 +134,9 @@ class CyberExecApp(App):
         self._cards_by_id: Dict[str, AgentStepCard] = {}
         self._busy = False
         self._hitl_bar: Optional[HITLBar] = None
-        self._hitl_queue: List[Tuple[Interrupt, "Future[Dict[str, Any]]"]] = []
+        self._hitl_queue: List[
+            Tuple[Interrupt, "Future[Dict[str, Any]]", Optional[str]]
+        ] = []
         self._resume_bar: Optional[ResumeBar] = None
 
     # ------------------------------------------------------------------
@@ -161,6 +163,10 @@ class CyberExecApp(App):
 
     def on_unmount(self) -> None:
         hitl_helpers.set_prompter(None)
+        # Drop every cached sudo password on app exit. ``sudo_secrets`` is
+        # process-local in-memory, but be explicit so we don't rely on the
+        # interpreter shutting down promptly.
+        sudo_secrets.clear_all()
 
     # ------------------------------------------------------------------
     # Input handling
@@ -186,6 +192,7 @@ class CyberExecApp(App):
             self._show_capabilities()
             return
         if lower == "/clear":
+            sudo_secrets.clear_all()
             new_id = self.orchestrator.new_session()
             self.action_clear_conversation()
             self._append(WelcomeCard())
@@ -418,20 +425,32 @@ class CyberExecApp(App):
     # ------------------------------------------------------------------
     # HITL — inline (replaces the input)
     # ------------------------------------------------------------------
-    def show_hitl_modal(self, interrupt: Interrupt, future: "Future[Dict[str, Any]]") -> None:
+    def show_hitl_modal(
+        self,
+        interrupt: Interrupt,
+        future: "Future[Dict[str, Any]]",
+        thread_id: Optional[str] = None,
+    ) -> None:
         if self._hitl_bar is not None:
             # Another tool is already waiting on the operator. Queue this one
             # so its worker thread keeps blocking on its Future until we get
             # to it — without this the Future would never resolve and the
             # parallel tool call would hang indefinitely.
-            self._hitl_queue.append((interrupt, future))
+            self._hitl_queue.append((interrupt, future, thread_id))
             return
-        self._mount_hitl(interrupt, future)
+        self._mount_hitl(interrupt, future, thread_id)
 
-    def _mount_hitl(self, interrupt: Interrupt, future: "Future[Dict[str, Any]]") -> None:
+    def _mount_hitl(
+        self,
+        interrupt: Interrupt,
+        future: "Future[Dict[str, Any]]",
+        thread_id: Optional[str] = None,
+    ) -> None:
         prompt_row = self.query_one("#prompt-row")
         prompt_row.display = False
-        bar = HITLBar(interrupt, future, on_done=self._hide_hitl)
+        bar = HITLBar(
+            interrupt, future, on_done=self._hide_hitl, thread_id=thread_id
+        )
         self._hitl_bar = bar
         self.mount(bar, after=self.query_one("#status", Static))
 
@@ -442,8 +461,8 @@ class CyberExecApp(App):
         self._hitl_bar = None
         bar.remove()
         if self._hitl_queue:
-            next_interrupt, next_future = self._hitl_queue.pop(0)
-            self._mount_hitl(next_interrupt, next_future)
+            next_interrupt, next_future, next_thread_id = self._hitl_queue.pop(0)
+            self._mount_hitl(next_interrupt, next_future, next_thread_id)
             return
         prompt_row = self.query_one("#prompt-row")
         prompt_row.display = True
@@ -504,7 +523,7 @@ class CyberExecApp(App):
             if bar is None:
                 return False
             if action == "hitl_cancel_sub":
-                return bar.mode in ("edit", "reject")
+                return bar.mode in ("edit", "reject", "sudo_password")
             # approve / edit / reject — only active in choose mode so the user
             # can still type those characters in the inline edit/reject input.
             return bar.mode == "choose"

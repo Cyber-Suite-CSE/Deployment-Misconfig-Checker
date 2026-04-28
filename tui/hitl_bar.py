@@ -1,10 +1,12 @@
 """Inline approval bar — takes over the input slot during a HITL interrupt.
 
-Three internal modes:
-- ``choose``    a / e / r bindings active; arrow keys move the selection cursor;
-                Enter activates the cursor's option
-- ``edit``      Input is focused, cycles through args one at a time
-- ``reject``    Input is focused, captures a single reason string
+Four internal modes:
+- ``choose``         a / e / r bindings active; arrow keys move the selection
+                     cursor; Enter activates the cursor's option
+- ``edit``           Input is focused, cycles through args one at a time
+- ``reject``         Input is focused, captures a single reason string
+- ``sudo_password``  Masked Input is focused, captures a sudo password for the
+                     current session when the just-approved command needs root
 
 The bar resolves the worker's ``Future`` with the same payload shape the
 LangGraph runtime expects: ``{"decisions": [...]}`` in the order of
@@ -22,6 +24,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Input, Static
 
+from agents import sudo_secrets
 from agents.hitl_helpers import (
     apply_locked_prefix,
     format_rejection_message,
@@ -82,10 +85,12 @@ class HITLBar(Vertical):
         interrupt: Interrupt,
         future: "Future[Dict[str, Any]]",
         on_done: Callable[[], None],
+        thread_id: Optional[str] = None,
     ) -> None:
         super().__init__()
         self._future = future
         self._on_done = on_done
+        self._thread_id = thread_id
         payload = interrupt.value or {}
         self._action_requests: List[Dict[str, Any]] = list(payload.get("action_requests") or [])
         self._decisions: List[Optional[Dict[str, Any]]] = [None] * len(self._action_requests)
@@ -110,6 +115,12 @@ class HITLBar(Vertical):
         inp = Input(id="hitl-input")
         inp.display = False
         yield inp
+        # Separate masked input for sudo password capture; kept distinct from
+        # the main input so we don't have to flip ``password=True`` at runtime
+        # (Textual handles ``password`` as a constructor param more reliably).
+        pw_inp = Input(id="hitl-sudo-input", password=True)
+        pw_inp.display = False
+        yield pw_inp
 
     @property
     def mode(self) -> str:
@@ -130,6 +141,9 @@ class HITLBar(Vertical):
         actions = self.query_one("#hitl-actions", Static)
         hint = self.query_one("#hitl-hint", Static)
         inp = self.query_one("#hitl-input", Input)
+        pw_inp = self.query_one("#hitl-sudo-input", Input)
+        # Default: hide the sudo input; the sudo_password branch turns it on.
+        pw_inp.display = False
 
         if self._mode == "choose":
             req = self._action_requests[self._idx]
@@ -193,6 +207,26 @@ class HITLBar(Vertical):
             inp.value = ""
             inp.placeholder = "reason"
             inp.focus()
+            return
+
+        if self._mode == "sudo_password":
+            req = self._action_requests[self._idx]
+            tool_name = req.get("name", "<unknown>")
+            title.update(f"sudo password · {tool_name}")
+            body.update(
+                "[dim]this command needs root — password is held in memory "
+                "for this session only and cleared on /clear[/dim]"
+            )
+            body.display = True
+            actions.update("")
+            actions.display = False
+            hint.update("[dim]↵ submit · esc skip (tool will fail)[/dim]")
+            hint.display = True
+            inp.display = False
+            pw_inp.display = True
+            pw_inp.value = ""
+            pw_inp.placeholder = "sudo password"
+            pw_inp.focus()
 
     def _render_options(self) -> str:
         labels = ("approve", "edit", "reject")
@@ -211,7 +245,7 @@ class HITLBar(Vertical):
         if self._mode != "choose":
             return
         self._decisions[self._idx] = {"type": "approve"}
-        self._advance()
+        self._after_decision()
 
     def action_edit(self) -> None:
         if self._mode != "choose":
@@ -220,7 +254,7 @@ class HITLBar(Vertical):
         args = req.get("args", {}) or {}
         if not args:
             self._decisions[self._idx] = {"type": "approve"}
-            self._advance()
+            self._after_decision()
             return
         self._edit_keys = list(args.keys())
         self._edit_idx = 0
@@ -241,6 +275,12 @@ class HITLBar(Vertical):
             self._edit_idx = 0
             self._edited = {}
             self._refresh_view()
+        elif self._mode == "sudo_password":
+            # Operator chose not to enter a password. The decision still
+            # stands; the tool will return a clear "no password cached" error
+            # if it actually tries to elevate.
+            self._mode = "choose"
+            self._advance()
 
     def action_select_prev(self) -> None:
         if self._mode != "choose":
@@ -269,7 +309,7 @@ class HITLBar(Vertical):
     # Input submission
     # ------------------------------------------------------------------
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != "hitl-input":
+        if event.input.id not in ("hitl-input", "hitl-sudo-input"):
             return
         event.stop()
         if self._mode == "edit":
@@ -300,9 +340,22 @@ class HITLBar(Vertical):
                 self._edit_keys = []
                 self._edit_idx = 0
                 self._edited = {}
-                self._advance()
+                self._after_decision()
             else:
                 self._refresh_view()
+        elif self._mode == "sudo_password":
+            password = event.value
+            if password and self._thread_id:
+                sudo_secrets.set_password(self._thread_id, password)
+                # Mark the decision so audit_log records ``requires_sudo``;
+                # password itself stays only in ``sudo_secrets`` (in-memory).
+                if self._decisions[self._idx] is not None:
+                    self._decisions[self._idx]["requires_sudo"] = True
+            # Wipe the widget's buffer so the password doesn't linger in the
+            # rendered tree — sudo_secrets is now the single source of truth.
+            event.input.value = ""
+            self._mode = "choose"
+            self._advance()
         elif self._mode == "reject":
             req = self._action_requests[self._idx]
             tool_name = req.get("name", "")
@@ -318,6 +371,41 @@ class HITLBar(Vertical):
     # ------------------------------------------------------------------
     # Internal flow
     # ------------------------------------------------------------------
+    def _after_decision(self) -> None:
+        """Run between a finished decision and the move to the next request.
+
+        If the just-finished decision will execute a command that needs root
+        and we don't already have a password cached for this thread, switch
+        to ``sudo_password`` mode to capture one. Otherwise advance.
+        """
+        decision = self._decisions[self._idx]
+        request = self._action_requests[self._idx]
+        if decision and self._needs_sudo_password(decision, request):
+            self._mode = "sudo_password"
+            self._refresh_view()
+            return
+        self._advance()
+
+    def _needs_sudo_password(
+        self, decision: Dict[str, Any], request: Dict[str, Any]
+    ) -> bool:
+        if decision.get("type") == "reject":
+            return False
+        if not self._thread_id:
+            return False
+        if sudo_secrets.has_password(self._thread_id):
+            return False
+        if decision.get("type") == "edit":
+            edited = (decision.get("edited_action") or {}).get("args") or {}
+            tool_name = (decision.get("edited_action") or {}).get("name") or ""
+            command = sudo_secrets.extract_command(tool_name, edited)
+        else:
+            tool_name = request.get("name") or ""
+            command = sudo_secrets.extract_command(tool_name, request.get("args") or {})
+        if not command:
+            return False
+        return sudo_secrets.command_needs_root(tool_name, command)
+
     def _advance(self) -> None:
         self._idx += 1
         self._selected_idx = 0

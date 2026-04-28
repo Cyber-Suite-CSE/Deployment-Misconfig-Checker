@@ -4,12 +4,14 @@ Multi-Agent Cybersecurity System - EXECUTION FOCUSED
 A hierarchical agent system that EXECUTES REAL cybersecurity commands
 """
 
+import atexit
 import os
 import sys
 from dotenv import load_dotenv
 from colorama import init, Fore, Style, Back
 from agents.orchestrator_agent import OrchestratorAgent
 from agents.hitl_helpers import AUDIT_LOG_PATH, CHECKPOINT_DB_PATH
+from agents import sudo_secrets
 from tools.nmap_tool import validate_nmap_installed
 from tools.masscan_tool import validate_masscan_installed
 from tools.wpscan_tool import validate_wpscan_installed
@@ -274,6 +276,11 @@ def main():
     # Bootstrap HITL paths (audit log + checkpointer DB)
     _bootstrap_hitl_paths()
 
+    # Drop cached sudo passwords on any normal interpreter exit. The TUI
+    # also clears them in ``CyberExecApp.on_unmount``; this catches CLI
+    # exits and ``sys.exit`` paths.
+    atexit.register(sudo_secrets.clear_all)
+
     # Initialize orchestrator
     try:
         print(f"{Fore.CYAN}Initializing execution system...{Style.RESET_ALL}")
@@ -329,6 +336,7 @@ def main():
 
             lowered = user_input.lower().strip()
             if lowered == "/clear":
+                sudo_secrets.clear_all()
                 new_id = orchestrator.new_session()
                 os.system("clear" if os.name != "nt" else "cls")
                 print_banner()

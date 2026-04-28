@@ -1,10 +1,14 @@
 import subprocess
 import re
 import os
+import sys
 from typing import Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from colorama import init, Fore, Style
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from agents import sudo_secrets
 
 init(autoreset=True)
 
@@ -110,26 +114,35 @@ def execute_masscan(command: str, safe_mode: bool = True) -> str:
     )
 
     actual_command = command
-    if not is_info_only:
-        print(f"{Fore.YELLOW}[DEBUG] Command requires root privileges (raw socket access){Style.RESET_ALL}")
-        try:
-            if os.geteuid() != 0:
-                print(f"{Fore.CYAN}[DEBUG] Not running as root, prepending sudo...{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}[DEBUG] You will be prompted for sudo password{Style.RESET_ALL}")
-                actual_command = f"sudo -k {command}"
-            else:
-                print(f"{Fore.GREEN}[DEBUG] Already running as root{Style.RESET_ALL}")
-        except AttributeError:
-            print(f"{Fore.YELLOW}[DEBUG] Cannot determine if running as root (Windows?){Style.RESET_ALL}")
+    sudo_stdin: Optional[str] = None
+    if not is_info_only and not sudo_secrets.is_root():
+        thread_id = sudo_secrets.current_thread_id.get()
+        password = sudo_secrets.get_password(thread_id)
+        if password is None:
+            error_msg = (
+                "masscan requires root for raw-socket access, but no sudo "
+                "password is cached for this session. Approve a privileged "
+                "command via HITL first to enter your sudo password, or "
+                "rerun with the program already as root."
+            )
+            print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
+            return f"Error: {error_msg}"
+        actual_command = f"sudo -S -k -p '' {command}"
+        sudo_stdin = password + "\n"
+        print(f"{Fore.CYAN}[DEBUG] Using HITL-supplied sudo password (sudo -S){Style.RESET_ALL}")
+    elif not is_info_only:
+        print(f"{Fore.GREEN}[DEBUG] Already running as root{Style.RESET_ALL}")
 
     try:
         print(f"{Fore.YELLOW}[DEBUG] Executing command via subprocess...{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}[DEBUG] Actual command: {Fore.WHITE}{actual_command}{Style.RESET_ALL}")
+        display_command = actual_command if sudo_stdin is None else f"{actual_command}  [stdin: <password>]"
+        print(f"{Fore.CYAN}[DEBUG] Actual command: {Fore.WHITE}{display_command}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] ----------------------------------------{Style.RESET_ALL}")
 
         result = subprocess.run(
             actual_command,
             shell=True,
+            input=sudo_stdin,
             capture_output=True,
             text=True,
             timeout=300,
