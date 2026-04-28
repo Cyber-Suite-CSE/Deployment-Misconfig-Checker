@@ -1,6 +1,8 @@
+import ipaddress
 import json
 import os
 import re
+import socket
 import sys
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -117,6 +119,44 @@ class OrchestratorAgent:
         self._session_store = SessionStore()
         self._current_thread_id: str = uuid4().hex
 
+    def _validate_task_targets(self, task: str) -> Optional[str]:
+        """Return an error message if the task targets a public/external IP or a
+        hostname that resolves to one.  Returns ``None`` when all targets are
+        private/internal."""
+
+        _IP_RE = r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b"
+
+        for ip_str in re.findall(_IP_RE, task):
+            try:
+                if not ipaddress.ip_address(ip_str).is_private:
+                    return (
+                        f"Blocked: {ip_str} is a public/external IP address. "
+                        f"Only private/internal targets are allowed "
+                        f"(10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x)."
+                    )
+            except ValueError:
+                continue
+
+        url_hostnames = set(re.findall(r"https?://([^\s/:]+)", task, re.IGNORECASE))
+        _BARE_HOST_RE = r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b"
+        all_hostnames = url_hostnames | set(re.findall(_BARE_HOST_RE, task))
+
+        for hostname in all_hostnames:
+            if re.match(_IP_RE, hostname):
+                continue
+            try:
+                for info in socket.getaddrinfo(hostname, None):
+                    resolved = info[4][0]
+                    if not ipaddress.ip_address(resolved).is_private:
+                        return (
+                            f"Blocked: {hostname} resolves to public IP "
+                            f"{resolved}. Only private/internal targets are allowed."
+                        )
+            except (socket.gaierror, ValueError):
+                continue
+
+        return None
+
     # ------------------------------------------------------------------
     # Dispatcher tools — each closes over self so it can record execution
     # history and forward results back to the supervisor as JSON.
@@ -177,6 +217,10 @@ class OrchestratorAgent:
             card_id = self._announce("nmap", task)
             token = current_card_id.set(card_id)
             try:
+                validation_error = self._validate_task_targets(task)
+                if validation_error:
+                    print(f"{Fore.RED}[Orchestrator] {validation_error}{Style.RESET_ALL}")
+                    return json.dumps({"error": validation_error, "executed": False, "success": False})
                 print(
                     f"\n{Fore.MAGENTA}[Orchestrator] Routing to NMAP{Style.RESET_ALL}"
                 )
@@ -203,6 +247,10 @@ class OrchestratorAgent:
             card_id = self._announce("masscan", task)
             token = current_card_id.set(card_id)
             try:
+                validation_error = self._validate_task_targets(task)
+                if validation_error:
+                    print(f"{Fore.RED}[Orchestrator] {validation_error}{Style.RESET_ALL}")
+                    return json.dumps({"error": validation_error, "executed": False, "success": False})
                 print(
                     f"\n{Fore.MAGENTA}[Orchestrator] Routing to MASSCAN{Style.RESET_ALL}"
                 )
@@ -226,6 +274,10 @@ class OrchestratorAgent:
             card_id = self._announce("wpscan", task)
             token = current_card_id.set(card_id)
             try:
+                validation_error = self._validate_task_targets(task)
+                if validation_error:
+                    print(f"{Fore.RED}[Orchestrator] {validation_error}{Style.RESET_ALL}")
+                    return json.dumps({"error": validation_error, "executed": False, "success": False})
                 print(
                     f"\n{Fore.MAGENTA}[Orchestrator] Routing to WPSCAN{Style.RESET_ALL}"
                 )
@@ -249,6 +301,10 @@ class OrchestratorAgent:
             card_id = self._announce("nikto", task)
             token = current_card_id.set(card_id)
             try:
+                validation_error = self._validate_task_targets(task)
+                if validation_error:
+                    print(f"{Fore.RED}[Orchestrator] {validation_error}{Style.RESET_ALL}")
+                    return json.dumps({"error": validation_error, "executed": False, "success": False})
                 print(
                     f"\n{Fore.MAGENTA}[Orchestrator] Routing to NIKTO{Style.RESET_ALL}"
                 )
@@ -273,6 +329,10 @@ class OrchestratorAgent:
             card_id = self._announce("metasploit", task)
             token = current_card_id.set(card_id)
             try:
+                validation_error = self._validate_task_targets(task)
+                if validation_error:
+                    print(f"{Fore.RED}[Orchestrator] {validation_error}{Style.RESET_ALL}")
+                    return json.dumps({"error": validation_error, "executed": False, "success": False})
                 print(
                     f"\n{Fore.MAGENTA}[Orchestrator] Routing to METASPLOIT (passive){Style.RESET_ALL}"
                 )
