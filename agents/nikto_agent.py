@@ -44,7 +44,11 @@ class NiktoAgent:
         system_prompt = NIKTO_AGENT_PROMPT.format(
             skill=PromptProvider.get_skill("nikto"),
             tool_names="execute_nikto",
-            tools="execute_nikto: Executes real nikto commands and returns actual output",
+            tools=(
+                "execute_nikto: runs nikto with typed parameters (target, "
+                "port, ssl, tuning, evasion, user_agent, cgi_dirs). There is "
+                "no command string — choose the right parameters."
+            ),
             input="",
             agent_scratchpad="",
         )
@@ -75,20 +79,17 @@ class NiktoAgent:
 
         try:
             execution_request = f"""
-MANDATORY COMMAND EXECUTION TASK:
+MANDATORY SCAN TASK:
 {request}
 
 YOU MUST:
-1. Use the execute_nikto tool RIGHT NOW
-2. Pass the appropriate nikto command to it
-3. The tool will show [DEBUG] output with the real results
-4. Return those real results
+1. Call the execute_nikto tool RIGHT NOW with typed parameters.
+2. Set `target` (host, IP, or http(s) URL) and choose port, ssl,
+   tuning, etc. from the schema. There is NO command string.
+3. The tool will show [DEBUG] output with the real argv and results.
+4. Return those real results.
 
-DO NOT just explain - USE THE TOOL!
-If this is about web vulnerability scanning, construct and EXECUTE the nikto command.
-If this is about nikto help, EXECUTE 'nikto -Help'.
-
-EXECUTE THE COMMAND NOW using execute_nikto tool!
+DO NOT just explain — USE THE TOOL with parameters!
 """
 
             print(
@@ -126,40 +127,32 @@ EXECUTE THE COMMAND NOW using execute_nikto tool!
                     f"{Fore.YELLOW}[NIKTO Agent] Attempting direct tool execution...{Style.RESET_ALL}"
                 )
 
-                request_lower = request.lower()
-
-                # Check for explicit URLs
+                # Pull a target out of the request (URL → domain → IP).
+                target: str | None = None
                 url_pattern = r"https?://[^\s]+"
                 urls = re.findall(url_pattern, request)
-
-                # Check for domain-like strings (e.g., example.com)
-                domain_pattern = r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b"
+                domain_pattern = (
+                    r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b"
+                )
                 domains = re.findall(domain_pattern, request)
-
+                ip_pattern = r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+                ips = re.findall(ip_pattern, request)
                 if urls:
-                    fallback_result = execute_nikto.invoke({"command": f"nikto -h {urls[0]}"})
-                    executed = True
+                    target = urls[0]
                 elif domains:
-                    fallback_result = execute_nikto.invoke({"command": f"nikto -h {domains[0]}"})
-                    executed = True
-                elif "help" in request_lower:
-                    fallback_result = execute_nikto.invoke({"command": "nikto -Help"})
-                    executed = True
-                elif "scan" in request_lower or "check" in request_lower:
-                    # Attempt to find IP or anything looking like a target
-                    ip_pattern = r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
-                    ips = re.findall(ip_pattern, request)
-                    if ips:
-                        fallback_result = execute_nikto.invoke({"command": f"nikto -h {ips[0]}"})
-                        executed = True
-                    else:
-                        fallback_result = execute_nikto.invoke({"command": "nikto -Help"})
-                        executed = False  # Help alone doesn't count as execution
-                else:
-                    fallback_result = execute_nikto.invoke({"command": "nikto -Help"})
-                    executed = False
+                    target = domains[0]
+                elif ips:
+                    target = ips[0]
 
-                content = f"Direct execution result:\n{fallback_result}"
+                if target:
+                    fallback_result = execute_nikto.invoke({"target": target})
+                    content = f"Direct execution result:\n{fallback_result}"
+                    executed = True
+                else:
+                    content = (
+                        "Agent did not execute a tool and no target could be "
+                        "extracted from the request for a direct fallback."
+                    )
 
             else:
                 executed = True

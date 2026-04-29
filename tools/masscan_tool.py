@@ -1,11 +1,21 @@
-import subprocess
-import re
+"""masscan tool — typed parameter schema, argv-based execution.
+
+masscan needs raw-socket access for every real scan, so the tool always
+elevates via sudo (cached HITL password). Only --version-style metadata
+calls would skip elevation, but those are not part of the typed surface —
+the agent uses the schema, not a help mode.
+"""
+
+import ipaddress
 import os
+import re
+import subprocess
 import sys
-from typing import Optional
+from typing import List, Literal, Optional
+
+from colorama import Fore, Style, init
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
-from colorama import init, Fore, Style
+from pydantic import BaseModel, Field, field_validator
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents import sudo_secrets
@@ -13,109 +23,173 @@ from agents import sudo_secrets
 init(autoreset=True)
 
 
-class MasscanInput(BaseModel):
-    """Schema for MASSCAN tool input"""
-    command: str = Field(description="The masscan command to execute (e.g., 'masscan -p80,443 192.168.1.0/24 --rate=1000' or 'masscan --help')")
-    safe_mode: bool = Field(default=True, description="Whether to enforce safety checks on the command")
-
-
-# masscan crafts its own raw packets, so anything beyond help/version needs root.
-# Detect those exemptions to skip sudo elevation.
-_INFO_ONLY_RE = re.compile(
-    r'(?:^|\s)(--help|-h|--version|-V|--regress)(?:\s|$)', re.IGNORECASE
+_PORTS_RE = re.compile(
+    r"^([UT]:)?\d{1,5}(-\d{1,5})?(,([UT]:)?\d{1,5}(-\d{1,5})?)*$"
+)
+_IFACE_RE = re.compile(r"^[a-zA-Z0-9_.\-]{1,16}$")
+_IP_RANGE_RE = re.compile(
+    r"^(?:\d{1,3}\.){3}\d{1,3}-(?:\d{1,3}\.){3}\d{1,3}$"
 )
 
 
-@tool("masscan_executor", args_schema=MasscanInput, return_direct=False)
-def execute_masscan(command: str, safe_mode: bool = True) -> str:
-    """
-    Execute MASSCAN commands and return REAL output.
-
-    THIS TOOL ACTUALLY RUNS COMMANDS ON THE SYSTEM.
-
-    masscan is an Internet-scale port scanner — similar to nmap but optimized for
-    sweeping very large IP ranges at very high packet rates by emitting its own
-    raw packets. Almost every invocation therefore needs root; the tool prepends
-    ``sudo -k`` automatically unless the command is help/version/regress.
-
-    This tool can:
-    - Run masscan port discovery against single hosts or large CIDR ranges
-    - Execute 'masscan --help' to print usage information
-    - Strip file-output flags so results stream back to stdout
-    - Block obvious shell-injection patterns when safe_mode is on
-
-    Args:
-        command: The masscan command to execute
-        safe_mode: Whether to enforce safety checks (default: True)
-
-    Returns:
-        The ACTUAL output of the masscan command execution
-    """
-
-    print(f"\n{Fore.CYAN}[DEBUG] ========================================")
-    print(f"{Fore.YELLOW}[DEBUG] Preparing to execute command: {Fore.WHITE}{command}")
-    print(f"{Fore.CYAN}[DEBUG] ========================================{Style.RESET_ALL}")
-
-    print(f"{Fore.BLUE}[DEBUG] Checking for file output flags...{Style.RESET_ALL}")
-
-    output_patterns = [
-        r'-oX\s+\S+',
-        r'-oJ\s+\S+',
-        r'-oG\s+\S+',
-        r'-oL\s+\S+',
-        r'-oB\s+\S+',
-        r'-oD\s+\S+',
-        r'--output-format\s+\S+',
-        r'--output-filename\s+\S+',
-        r'--output-file\s+\S+',
-        r'--rotate\s+\S+',
-        r'--rotate-dir\s+\S+',
-        r'--append-output',
-        r'--resume\s+\S+',
-    ]
-
-    original_command = command
-    for pattern in output_patterns:
-        if re.search(pattern, command, re.IGNORECASE):
-            command = re.sub(pattern, '', command, flags=re.IGNORECASE)
-            print(f"{Fore.YELLOW}[DEBUG] Removed file output flag matching: {pattern}{Style.RESET_ALL}")
-
-    command = re.sub(r'\s+', ' ', command).strip()
-
-    if command != original_command:
-        print(f"{Fore.YELLOW}[DEBUG] Modified command (file outputs removed): {command}{Style.RESET_ALL}")
-
-    if safe_mode:
-        print(f"{Fore.BLUE}[DEBUG] Running safety checks...{Style.RESET_ALL}")
-        dangerous_patterns = [
-            r';\s*rm',
-            r'&&\s*rm',
-            r'\|\s*rm',
-            r'`',
-            r'\$\(',
-            r'\|.*sh',
-        ]
-
-        for pattern in dangerous_patterns:
-            if re.search(pattern, command, re.IGNORECASE):
-                error_msg = f"Command blocked for safety reasons. Pattern '{pattern}' detected."
-                print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-                return f"Error: {error_msg}"
-
-        print(f"{Fore.GREEN}[DEBUG] Safety checks passed{Style.RESET_ALL}")
-
-    if not (command.strip().startswith('masscan') or command.strip().startswith('man masscan')):
-        error_msg = "Command must start with 'masscan' or 'man masscan'"
-        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        return f"Error: {error_msg}"
-
-    is_info_only = bool(
-        _INFO_ONLY_RE.search(command) or command.strip().startswith('man masscan')
+def _validate_target_token(v: str) -> str:
+    v = v.strip()
+    if not v:
+        raise ValueError("target token must not be empty")
+    # IP / CIDR
+    try:
+        ipaddress.ip_network(v, strict=False)
+        return v
+    except ValueError:
+        pass
+    # Range like 10.0.0.1-10.0.0.50
+    if _IP_RANGE_RE.match(v):
+        return v
+    raise ValueError(
+        f"target {v!r} is not a valid IP, CIDR, or A.B.C.D-A.B.C.D range"
     )
 
-    actual_command = command
+
+class MasscanInput(BaseModel):
+    """Typed input for the masscan executor."""
+
+    targets: List[str] = Field(
+        description=(
+            "One or more targets. Each entry must be an IPv4/IPv6 address, "
+            "a CIDR block ('10.0.0.0/24'), or a range ('10.0.0.1-10.0.0.50')."
+        ),
+    )
+    ports: str = Field(
+        description=(
+            "Port spec. Formats: '80,443', '1-65535', '22,80-100,443', or with "
+            "explicit transport: 'U:53,T:80'. There is no default — every real "
+            "scan must name its ports."
+        ),
+    )
+    rate: int = Field(
+        default=1000,
+        ge=1,
+        le=100000,
+        description=(
+            "Packets per second. Guidance: 100=polite, 1000=LAN default, "
+            "10000=large /16 sweeps, 100000+=lab links only."
+        ),
+    )
+    banners: bool = Field(
+        default=False,
+        description="Add --banners to pull lightweight banners from open ports.",
+    )
+    excludes: Optional[List[str]] = Field(
+        default=None,
+        description="IPs/CIDRs/ranges to skip. Validated identically to targets.",
+    )
+    interface: Optional[str] = Field(
+        default=None,
+        description="Bind to a specific NIC (e.g. 'eth0'). Optional.",
+    )
+    wait_seconds: int = Field(
+        default=10,
+        ge=0,
+        le=120,
+        description="Seconds to wait for late responses after sending the last probe.",
+    )
+
+    @field_validator("targets")
+    @classmethod
+    def _validate_targets(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("targets must contain at least one entry")
+        if len(v) > 64:
+            raise ValueError("at most 64 target entries per call")
+        return [_validate_target_token(t) for t in v]
+
+    @field_validator("excludes")
+    @classmethod
+    def _validate_excludes(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return None
+        if len(v) > 64:
+            raise ValueError("at most 64 exclude entries per call")
+        return [_validate_target_token(t) for t in v]
+
+    @field_validator("ports")
+    @classmethod
+    def _validate_ports(cls, v: str) -> str:
+        v = v.strip()
+        if not _PORTS_RE.match(v):
+            raise ValueError(
+                f"ports {v!r} is not a valid spec "
+                "(use '80,443' | '1-65535' | 'U:53,T:80')"
+            )
+        for part in v.split(","):
+            chunk = part.split(":", 1)[-1]
+            for endpoint in chunk.split("-"):
+                p = int(endpoint)
+                if not (0 <= p <= 65535):
+                    raise ValueError(f"port {p} out of range 0-65535")
+        return v
+
+    @field_validator("interface")
+    @classmethod
+    def _validate_iface(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not _IFACE_RE.match(v):
+            raise ValueError(
+                "interface must be 1-16 alphanumerics or _.- (e.g. 'eth0')"
+            )
+        return v
+
+
+def build_masscan_argv(params: MasscanInput) -> List[str]:
+    argv: List[str] = ["masscan"]
+    argv += ["-p", params.ports]
+    argv += ["--rate", str(params.rate)]
+    argv += ["--wait", str(params.wait_seconds)]
+    if params.banners:
+        argv.append("--banners")
+    if params.interface:
+        argv += ["-e", params.interface]
+    if params.excludes:
+        argv += ["--exclude", ",".join(params.excludes)]
+    argv += params.targets
+    return argv
+
+
+@tool("masscan_executor", args_schema=MasscanInput, return_direct=False)
+def execute_masscan(
+    targets: List[str],
+    ports: str,
+    rate: int = 1000,
+    banners: bool = False,
+    excludes: Optional[List[str]] = None,
+    interface: Optional[str] = None,
+    wait_seconds: int = 10,
+) -> str:
+    """Run a masscan port-discovery sweep and return REAL output.
+
+    Pick parameters from the typed schema; the tool composes a safe argv
+    list internally and runs masscan via subprocess (no shell). Always
+    elevated via sudo because masscan crafts raw packets.
+    """
+    params = MasscanInput(
+        targets=targets,
+        ports=ports,
+        rate=rate,
+        banners=banners,
+        excludes=excludes,
+        interface=interface,
+        wait_seconds=wait_seconds,
+    )
+    argv = build_masscan_argv(params)
     sudo_stdin: Optional[str] = None
-    if not is_info_only and not sudo_secrets.is_root():
+
+    print(f"\n{Fore.CYAN}[DEBUG] ========================================")
+    print(f"{Fore.YELLOW}[DEBUG] Composed argv: {Fore.WHITE}{argv}")
+    print(f"{Fore.CYAN}[DEBUG] ========================================{Style.RESET_ALL}")
+
+    if not sudo_secrets.is_root():
         thread_id = sudo_secrets.current_thread_id.get()
         password = sudo_secrets.get_password(thread_id)
         if password is None:
@@ -127,21 +201,20 @@ def execute_masscan(command: str, safe_mode: bool = True) -> str:
             )
             print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
             return f"Error: {error_msg}"
-        actual_command = f"sudo -S -k -p '' {command}"
+        argv = ["sudo", "-S", "-k", "-p", ""] + argv
         sudo_stdin = password + "\n"
         print(f"{Fore.CYAN}[DEBUG] Using HITL-supplied sudo password (sudo -S){Style.RESET_ALL}")
-    elif not is_info_only:
+    else:
         print(f"{Fore.GREEN}[DEBUG] Already running as root{Style.RESET_ALL}")
 
     try:
-        print(f"{Fore.YELLOW}[DEBUG] Executing command via subprocess...{Style.RESET_ALL}")
-        display_command = actual_command if sudo_stdin is None else f"{actual_command}  [stdin: <password>]"
-        print(f"{Fore.CYAN}[DEBUG] Actual command: {Fore.WHITE}{display_command}{Style.RESET_ALL}")
+        display = " ".join(argv) + ("  [stdin: <password>]" if sudo_stdin else "")
+        print(f"{Fore.CYAN}[DEBUG] Actual command: {Fore.WHITE}{display}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] ----------------------------------------{Style.RESET_ALL}")
 
         result = subprocess.run(
-            actual_command,
-            shell=True,
+            argv,
+            shell=False,
             input=sudo_stdin,
             capture_output=True,
             text=True,
@@ -156,38 +229,32 @@ def execute_masscan(command: str, safe_mode: bool = True) -> str:
             print(f"{Fore.CYAN}[DEBUG] ========== RAW STDOUT ==========={Style.RESET_ALL}")
             print(result.stdout)
             print(f"{Fore.CYAN}[DEBUG] ========== END STDOUT ==========={Style.RESET_ALL}")
-        else:
-            print(f"{Fore.YELLOW}[DEBUG] No stdout output{Style.RESET_ALL}")
-
         if result.stderr:
             print(f"{Fore.MAGENTA}[DEBUG] ========== RAW STDERR ==========={Style.RESET_ALL}")
             print(result.stderr)
             print(f"{Fore.MAGENTA}[DEBUG] ========== END STDERR ==========={Style.RESET_ALL}")
-        else:
-            print(f"{Fore.YELLOW}[DEBUG] No stderr output{Style.RESET_ALL}")
 
-        # masscan often prints its banner and progress on stderr even when the
-        # scan succeeds, so always merge it into the returned text.
+        # masscan often prints banner/progress on stderr — merge it in.
         output = result.stdout
         if result.stderr:
             output += f"\n\n{Fore.YELLOW}===== Errors/Warnings ====={Style.RESET_ALL}\n{result.stderr}"
 
         if result.returncode != 0 and not output:
             output = f"Command failed with return code {result.returncode}"
-            print(f"{Fore.RED}[DEBUG] {output}{Style.RESET_ALL}")
 
-        print(f"{Fore.GREEN}[DEBUG] Tool execution complete, returning output{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] ========================================{Style.RESET_ALL}\n")
-
         return output if output else "No output from command"
 
     except subprocess.TimeoutExpired:
         error_msg = "Command timed out after 300 seconds"
         print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}[DEBUG] Consider lowering --rate or narrowing the target range{Style.RESET_ALL}")
-        return f"TIMEOUT_ERROR: {error_msg} - Command: {actual_command}"
+        return f"TIMEOUT_ERROR: {error_msg} - argv: {argv}"
+    except FileNotFoundError as e:
+        error_msg = f"masscan binary not found: {e}"
+        print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
+        return error_msg
     except Exception as e:
-        error_msg = f"Error executing command: {str(e)}"
+        error_msg = f"Error executing command: {e}"
         print(f"{Fore.RED}[DEBUG] {error_msg}{Style.RESET_ALL}")
         return error_msg
 
@@ -197,14 +264,12 @@ def validate_masscan_installed() -> bool:
     try:
         print(f"{Fore.BLUE}[DEBUG] Checking if masscan is installed...{Style.RESET_ALL}")
         result = subprocess.run(
-            "masscan --version",
-            shell=True,
+            ["masscan", "--version"],
+            shell=False,
             capture_output=True,
             text=True,
             timeout=5,
         )
-        # Some masscan builds exit non-zero on --version while still printing
-        # the banner — accept either rc=0 or "masscan" appearing in output.
         is_installed = (
             result.returncode == 0
             or "masscan" in (result.stdout + result.stderr).lower()

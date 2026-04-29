@@ -1,126 +1,126 @@
 ═══════════════════════════════════════════════════════════════
-NMAP OPERATIONAL SKILL
+NMAP OPERATIONAL SKILL — TYPED PARAMETERS
 ═══════════════════════════════════════════════════════════════
 
+The execute_nmap tool takes typed parameters; pick the right combination
+for the task. There is NO command string to write — every flag is a
+typed field, validated by Pydantic before nmap runs.
+
+═══════════════════════════════════════════════════════════════
 SCAN STRATEGY — TWO-PHASE APPROACH
-
-Never guess what service runs on a port. Always probe actively with -sV.
-
-PHASE 1 — PORT DISCOVERY (fast sweep):
-  nmap -T4 --top-ports 1000 --open <target>
-
-  This finds open ports quickly without deep probing.
-  -T4 = aggressive timing (fast, reliable on LAN/local)
-  --top-ports 1000 = scan the 1000 most common ports
-  --open = only show open ports (cleaner output)
-
-  Parse the result to identify which ports are open. Then proceed to Phase 2.
-
-PHASE 2 — SERVICE/VERSION PROBING (targeted):
-  nmap -sV -sC -p<open_ports_comma_separated> <target>
-
-  Example: if Phase 1 found ports 22, 80, 443, 31337 open:
-    nmap -sV -sC -p22,80,443,31337 <target>
-
-  -sV = probe open ports to determine service/version info (THIS IS THE KEY FLAG)
-  -sC = run default NSE scripts (safe scripts only, adds vulnerability context)
-  -p<ports> = only probe the ports that were actually found open in Phase 1
-
-  This is fast because you're only probing the handful of ports that are open,
-  not all 1000. This is how you identify that port 31337 is actually HTTP,
-  or that port 10010 is running an SSH service.
-
-═══════════════════════════════════════════════════════════════
-SHORTCUTS — SKIP PHASE 1 WHEN:
 ═══════════════════════════════════════════════════════════════
 
-- User specifies exact ports: "scan port 8080 on X"
-  → nmap -sV -sC -p8080 <target>
+Never guess what service runs on a port. Probe actively.
 
-- User asks for a specific check: "check SSH on X"
-  → nmap -sV -sC -p22 <target>
+PHASE 1 — PORT DISCOVERY (fast triage):
+  target=<host>, scan_profile="quick"
+  Equivalent argv: nmap --top-ports 100 -T3 --open <host>
+  Use this to find which ports are open without deep probing.
 
-- User asks for a quick/stealth scan: "quick scan X"
-  → nmap -T4 -F --open <target>  (top 100 ports, no -sV yet)
-
-- User asks for help/info:
-  → nmap --help
-
-═══════════════════════════════════════════════════════════════
-ADVANCED SCANS — ONLY WHEN EXPLICITLY REQUESTED
-═══════════════════════════════════════════════════════════════
-
-OS detection:     nmap -O -sV <target>
-  Requires root/sudo. Only use when user asks "what OS" or "full scan".
-  Often needs sudo — the tool handles this automatically.
-
-UDP scan:         nmap -sU --top-ports 50 <target>
-  Slow. Only when user explicitly asks for UDP.
-  Limit to --top-ports 50 to avoid timeout.
-
-Vuln scripts:     nmap --script vuln -p<ports> <target>
-  Only AFTER Phase 2 identified services. Targets specific ports.
-  Can be slow — use --script-timeout 30s if needed.
-
-Full comprehensive: nmap -sS -sV -sC -O --top-ports 1000 <target>
-  Only when user says "full scan" or "comprehensive".
-  Requires root. May hit the 120s timeout on large networks.
+PHASE 2 — SERVICE / VERSION PROBING (targeted):
+  target=<host>, scan_profile="standard", ports="<csv from phase 1>",
+  service_detection=true, default_scripts=true
+  Equivalent argv: nmap -p<ports> -sV -sC -T3 --open <host>
+  Only probe ports that were actually open in Phase 1.
 
 ═══════════════════════════════════════════════════════════════
-NETWORK SCANS — SUBNETS/RANGES
+SCAN PROFILES (baselines)
 ═══════════════════════════════════════════════════════════════
 
-Host discovery:   nmap -sn <subnet>  (e.g. 192.168.1.0/24)
-  Ping sweep only — no port scanning. Finds live hosts.
+scan_profile="quick"
+  Top-100 ports, no service detect. Fast triage.
 
-Web server hunt:  nmap -p80,443,8080,8443 --open -T4 <subnet>
-  Fast sweep for web services across a network.
+scan_profile="standard"   (DEFAULT)
+  Top-1000 ports + -sV (service detection).
+
+scan_profile="comprehensive"
+  Full TCP range + -sV + -sC + -O. Slow. REQUIRES SUDO.
+
+scan_profile="stealth"
+  -sS SYN scan with -T2 timing. REQUIRES SUDO.
+
+scan_profile="ping"
+  -sn host discovery only. No port scan.
 
 ═══════════════════════════════════════════════════════════════
-TIMING GUIDANCE
+GRANULAR TOGGLES (layer on top of any profile)
 ═══════════════════════════════════════════════════════════════
 
--T1   Very slow, IDS evasion. Rarely needed.
--T2   Polite, slow. For fragile networks.
--T3   Default. Good for most cases.
--T4   Aggressive, fast. BEST for LAN/local testing. (PREFERRED)
--T5   Insane speed. Unreliable on WAN. Avoid.
+service_detection=true   add -sV (probe versions)
+os_detection=true        add -O  (OS fingerprint — REQUIRES SUDO)
+default_scripts=true     add -sC (NSE default category)
+open_only=true           add --open (default; cleaner output)
 
-Always prefer -T4 for local/LAN scanning. Use -T3 for unknown/remote targets.
+ports="80,443"           override default port list
+ports="1-1000"           explicit range
+ports="top-100"          top-N shortcut
+
+timing="aggressive"      -T4 — preferred for LAN/local
+timing="normal"          -T3 — default
+timing="polite"          -T2 — fragile networks
+
+nse_scripts=["vuln"]     allowlisted NSE script categories. Allowed names:
+                         vuln, default, safe, discovery, auth,
+                         http-title, http-headers, http-enum, http-methods,
+                         http-robots.txt, ssl-cert, ssl-enum-ciphers,
+                         smb-os-discovery, smb-vuln-ms17-010, smb-enum-shares,
+                         ftp-anon, dns-brute.
+
+═══════════════════════════════════════════════════════════════
+SHORTCUTS
+═══════════════════════════════════════════════════════════════
+
+User says "scan port 8080 on X":
+  target="X", scan_profile="standard", ports="8080",
+  service_detection=true, default_scripts=true
+
+User says "check SSH on X":
+  target="X", scan_profile="standard", ports="22",
+  service_detection=true, default_scripts=true
+
+User says "quick scan X":
+  target="X", scan_profile="quick", timing="aggressive"
+
+User says "find live hosts on 10.0.0.0/24":
+  target="10.0.0.0/24", scan_profile="ping"
+
+═══════════════════════════════════════════════════════════════
+ROOT-REQUIRING SCANS
+═══════════════════════════════════════════════════════════════
+
+These scans need sudo (the tool will prompt via HITL):
+- scan_profile="comprehensive"
+- scan_profile="stealth"
+- os_detection=true
 
 ═══════════════════════════════════════════════════════════════
 TIMEOUT AWARENESS
 ═══════════════════════════════════════════════════════════════
 
 The tool has a 120-second timeout. If a scan times out:
-1. Reduce scope: fewer ports (--top-ports 100 instead of 1000)
-2. Use faster timing: -T4 or -T5
-3. Drop -sC (NSE scripts are slow)
-4. Scan ports individually or in small groups
+1. Drop ports to 100 or so via ports="top-100"
+2. Use timing="aggressive"
+3. Drop default_scripts (NSE scripts are slow)
+4. Switch to scan_profile="quick"
 
 ═══════════════════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════════════════
 
 "Scan localhost"
-  Phase 1: nmap -T4 --top-ports 1000 --open localhost
-  Phase 2: nmap -sV -sC -p<found_ports> localhost
-
-"Scan 192.168.1.1"
-  Phase 1: nmap -T4 --top-ports 1000 --open 192.168.1.1
-  Phase 2: nmap -sV -sC -p<found_ports> 192.168.1.1
-
-"Check what's running on port 31337 on 10.0.0.5"
-  nmap -sV -sC -p31337 10.0.0.5
+  Phase 1: target="localhost", scan_profile="quick"
+  Phase 2: target="localhost", scan_profile="standard",
+           ports="<found>", service_detection=true, default_scripts=true
 
 "Find web servers on 192.168.1.0/24"
-  nmap -p80,443,8080,8443 --open -T4 192.168.1.0/24
+  target="192.168.1.0/24", ports="80,443,8080,8443", open_only=true,
+  timing="aggressive"
 
 "Full scan of 192.168.1.1"
-  nmap -sS -sV -sC -O --top-ports 1000 192.168.1.1
+  target="192.168.1.1", scan_profile="comprehensive"
 
 "What OS is 192.168.1.1 running?"
-  nmap -O -sV 192.168.1.1
+  target="192.168.1.1", os_detection=true, service_detection=true
 
-"Scan for UDP services"
-  nmap -sU --top-ports 50 192.168.1.1
+"Run vuln NSE scripts against open SMB on 10.0.0.5"
+  target="10.0.0.5", ports="445", nse_scripts=["vuln","smb-vuln-ms17-010"]

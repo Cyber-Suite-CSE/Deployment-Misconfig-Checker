@@ -47,7 +47,12 @@ class NmapAgent:
         system_prompt = NMAP_AGENT_PROMPT.format(
             skill=PromptProvider.get_skill("nmap"),
             tool_names="execute_nmap",
-            tools="execute_nmap: Executes real nmap commands and returns actual output",
+            tools=(
+                "execute_nmap: runs nmap with typed parameters (target, "
+                "scan_profile, ports, service_detection, os_detection, "
+                "default_scripts, timing, nse_scripts, open_only). "
+                "There is no command string — choose the right parameters."
+            ),
             input="",
             agent_scratchpad="",
         )
@@ -81,20 +86,18 @@ class NmapAgent:
         try:
             # Create an execution-focused request
             execution_request = f"""
-MANDATORY COMMAND EXECUTION TASK:
+MANDATORY SCAN TASK:
 {request}
 
 YOU MUST:
-1. Use the execute_nmap tool RIGHT NOW
-2. Pass the appropriate nmap command to it
-3. The tool will show [DEBUG] output with the real results
-4. Return those real results
+1. Call the execute_nmap tool RIGHT NOW with typed parameters.
+2. Choose the target, scan_profile, and any granular flags
+   (service_detection, os_detection, default_scripts, ports, timing,
+   nse_scripts) from the schema. There is NO command string.
+3. The tool will show [DEBUG] output with the real argv and results.
+4. Return those real results.
 
-DO NOT just explain - USE THE TOOL!
-If this is about scanning, construct and EXECUTE the nmap command.
-If this is about nmap help, EXECUTE 'nmap --help'.
-
-EXECUTE THE COMMAND NOW using execute_nmap tool!
+DO NOT just explain — USE THE TOOL with parameters!
 """
 
             print(
@@ -141,22 +144,27 @@ EXECUTE THE COMMAND NOW using execute_nmap tool!
                     f"{Fore.YELLOW}[NMAP Agent] Attempting direct tool execution...{Style.RESET_ALL}"
                 )
 
-                # Try direct tool execution as fallback
-                if "scan" in request.lower() or "port" in request.lower():
-                    if "localhost" in request.lower():
-                        fallback_result = execute_nmap.invoke({"command": "nmap localhost"})
-                    elif "help" in request.lower():
-                        fallback_result = execute_nmap.invoke({"command": "nmap --help"})
-                    else:
-                        # Extract IP if present
-                        ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-                        ips = re.findall(ip_pattern, request)
-                        if ips:
-                            fallback_result = execute_nmap.invoke({"command": f"nmap {ips[0]}"})
-                        else:
-                            fallback_result = execute_nmap.invoke({"command": "nmap --help"})
+                # Direct fallback uses the typed schema. Extract a target from
+                # the request; if none, surface the failure rather than guess.
+                target: str | None = None
+                if "localhost" in request.lower():
+                    target = "localhost"
+                else:
+                    ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
+                    ips = re.findall(ip_pattern, request)
+                    if ips:
+                        target = ips[0]
 
+                if target:
+                    fallback_result = execute_nmap.invoke(
+                        {"target": target, "scan_profile": "standard"}
+                    )
                     content = f"Direct execution result:\n{fallback_result}"
+                else:
+                    content = (
+                        "Agent did not execute a tool and no target could be "
+                        "extracted from the request for a direct fallback."
+                    )
             else:
                 executed = True
 

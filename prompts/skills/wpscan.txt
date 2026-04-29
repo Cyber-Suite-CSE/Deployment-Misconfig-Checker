@@ -1,84 +1,89 @@
 ═══════════════════════════════════════════════════════════════
-WPSCAN OPERATIONAL SKILL
+WPSCAN OPERATIONAL SKILL — TYPED PARAMETERS
 ═══════════════════════════════════════════════════════════════
 
 PURPOSE
-WPScan probes a target URL to identify the WordPress version, installed
-plugins/themes, enumerated users, and known CVEs. It needs an HTTP(S)
-URL — not an IP — and only works when the target is actually a
-WordPress site.
+WPScan probes a target URL for WordPress version, plugins, themes,
+users, and known CVEs. The execute_wpscan tool takes typed parameters;
+there is NO command string. Every flag is a typed field validated by
+Pydantic.
 
 ═══════════════════════════════════════════════════════════════
-COMMAND SHAPE
+REQUIRED INPUT
 ═══════════════════════════════════════════════════════════════
 
-  wpscan --url <https-url> [extra flags]
-
-Always pass --url with a full scheme (http:// or https://).
-
-═══════════════════════════════════════════════════════════════
-AUTO-INJECTED FLAGS — DO NOT DUPLICATE
-═══════════════════════════════════════════════════════════════
-
-The execute_wpscan tool auto-injects these on any --url scan, so the
-LLM should NOT add them itself:
-
-  --enumerate ap,at,u           (all plugins, all themes, users)
-  --plugins-detection aggressive
-  --random-user-agent
-  --api-token $WPSCAN_API_TOKEN  (only if env var is set)
-
-You only need to pass --enumerate if the user asks for a *narrower*
-enumeration (e.g. "only enumerate users" → --enumerate u).
+url
+  Full URL with scheme (http:// or https://). e.g.
+  "https://example.com" or "http://blog.local/wp". An IP without a
+  scheme is rejected by the validator.
 
 ═══════════════════════════════════════════════════════════════
-COMMON FLAG REFERENCE
+ENUMERATE — WHAT TO SEARCH FOR
 ═══════════════════════════════════════════════════════════════
 
---enumerate <flags>   What to enumerate. Single-letter codes:
-                        u    users
-                        p    plugins (vulnerable only)
-                        ap   all plugins
-                        t    themes (vulnerable only)
-                        at   all themes
-                        Combine with commas: --enumerate u,ap,at
+enumerate=[ ... ]   list of items, default ["plugins-all","themes-all","users"].
 
---detection-mode      passive | mixed | aggressive
-                      Aggressive is loud but most thorough.
+Allowed values:
+  plugins-all          all plugins (loud, comprehensive)
+  plugins-popular      most-popular plugins only
+  plugins-vulnerable   only plugins with known vulns
+  themes-all           all themes
+  themes-popular       most-popular themes
+  themes-vulnerable    only themes with known vulns
+  users                user enumeration
+  media                media file enumeration
+  config-backups       look for backup config files
+  db-exports           look for database exports
+  timthumbs            look for vulnerable timthumb installs
 
---plugins-version-detection   passive | mixed | aggressive
+═══════════════════════════════════════════════════════════════
+DETECTION MODES
+═══════════════════════════════════════════════════════════════
 
---random-user-agent   Rotate UA on each request.
+detection_mode               passive | aggressive | mixed   (default: mixed)
+plugins_detection            passive | aggressive | mixed   (default: aggressive)
+plugins_version_detection    passive | aggressive | mixed   (default: mixed)
 
---api-token <token>   Use the WPVulnDB API for vuln lookup.
-                      The tool reads $WPSCAN_API_TOKEN automatically.
+aggressive = loud but most thorough. mixed = balanced. passive = gentle.
 
---passwords <file>    Brute-force a wordlist against a known user.
-                      Pair with --usernames or --username.
-                      Only use when the user explicitly asks for
-                      brute-force / password testing.
+═══════════════════════════════════════════════════════════════
+OPTIONAL FLAGS
+═══════════════════════════════════════════════════════════════
+
+random_user_agent=true   (default) rotate UA to reduce blocking
+api_token="..."          override the WPSCAN_API_TOKEN env var
+
+═══════════════════════════════════════════════════════════════
+PASSWORD ATTACK — ONLY WHEN EXPLICITLY ASKED
+═══════════════════════════════════════════════════════════════
+
+password_attack="wp-login" | "xmlrpc" | "xmlrpc-multicall"
+usernames=["admin","editor"]   required when password_attack is set,
+                               max 10 usernames, each ≤64 chars,
+                               alphanumerics + _.-@ only.
 
 ═══════════════════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════════════════
 
 "Scan the WordPress site at https://example.com"
-  wpscan --url https://example.com
+  url="https://example.com"
 
 "Enumerate only users on https://blog.example.com"
-  wpscan --url https://blog.example.com --enumerate u
+  url="https://blog.example.com", enumerate=["users"]
 
 "Find vulnerable plugins on https://site.com"
-  wpscan --url https://site.com --enumerate p
+  url="https://site.com", enumerate=["plugins-vulnerable"]
 
-"How does wpscan work?"
-  wpscan --help
+"Aggressive scan of https://site.com"
+  url="https://site.com",
+  detection_mode="aggressive", plugins_detection="aggressive",
+  plugins_version_detection="aggressive"
 
 ═══════════════════════════════════════════════════════════════
 LIMITS
 ═══════════════════════════════════════════════════════════════
 
-- File-output flags (--output, -o, --format, --log) are stripped
-  by the tool — output streams back to you instead.
-- WPScan can rate-limit itself; large sites may take minutes.
-- Without a $WPSCAN_API_TOKEN, vuln lookups are limited.
+- File-output flags do not exist in this schema; output streams back to you.
+- WPScan can rate-limit itself; large sites may take minutes (timeout 600s).
+- Without WPSCAN_API_TOKEN set, vuln-DB lookups are restricted.

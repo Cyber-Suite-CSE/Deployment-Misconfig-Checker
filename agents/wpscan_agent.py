@@ -44,7 +44,13 @@ class WpscanAgent:
         system_prompt = WPSCAN_AGENT_PROMPT.format(
             skill=PromptProvider.get_skill("wpscan"),
             tool_names="execute_wpscan",
-            tools="execute_wpscan: Executes real wpscan commands and returns actual output",
+            tools=(
+                "execute_wpscan: runs wpscan with typed parameters (url, "
+                "enumerate, detection_mode, plugins_detection, "
+                "plugins_version_detection, random_user_agent, "
+                "password_attack, usernames, api_token). There is no "
+                "command string — choose the right parameters."
+            ),
             input="",
             agent_scratchpad="",
         )
@@ -75,20 +81,18 @@ class WpscanAgent:
 
         try:
             execution_request = f"""
-MANDATORY COMMAND EXECUTION TASK:
+MANDATORY SCAN TASK:
 {request}
 
 YOU MUST:
-1. Use the execute_wpscan tool RIGHT NOW
-2. Pass the appropriate wpscan command to it
-3. The tool will show [DEBUG] output with the real results
-4. Return those real results
+1. Call the execute_wpscan tool RIGHT NOW with typed parameters.
+2. Set `url` (with scheme) and choose `enumerate` items, detection
+   modes, and any other fields from the schema. There is NO command
+   string — every flag is a typed parameter.
+3. The tool will show [DEBUG] output with the real argv and results.
+4. Return those real results.
 
-DO NOT just explain - USE THE TOOL!
-If this is about WordPress scanning, construct and EXECUTE the wpscan command.
-If this is about wpscan help, EXECUTE 'wpscan --help'.
-
-EXECUTE THE COMMAND NOW using execute_wpscan tool!
+DO NOT just explain — USE THE TOOL with parameters!
 """
 
             print(
@@ -131,25 +135,16 @@ EXECUTE THE COMMAND NOW using execute_wpscan tool!
                     f"{Fore.YELLOW}[WPSCAN Agent] Attempting direct tool execution...{Style.RESET_ALL}"
                 )
 
-                if (
-                    "scan" in request.lower()
-                    or "wordpress" in request.lower()
-                    or "wp" in request.lower()
-                ):
-                    url_pattern = r"https?://[^\s]+"
-                    urls = re.findall(url_pattern, request)
-                    if urls:
-                        fallback_result = execute_wpscan.invoke(
-                            {"command": f"wpscan --url {urls[0]}"}
-                        )
-                    elif "help" in request.lower():
-                        fallback_result = execute_wpscan.invoke({"command": "wpscan --help"})
-                    else:
-                        fallback_result = execute_wpscan.invoke({"command": "wpscan --help"})
+                url_pattern = r"https?://[^\s]+"
+                urls = re.findall(url_pattern, request)
+                if urls:
+                    fallback_result = execute_wpscan.invoke({"url": urls[0]})
+                    content = f"Direct execution result:\n{fallback_result}"
                 else:
-                    fallback_result = execute_wpscan.invoke({"command": "wpscan --help"})
-
-                content = f"Direct execution result:\n{fallback_result}"
+                    content = (
+                        "Agent did not execute a tool and no http(s) URL could "
+                        "be extracted from the request for a direct fallback."
+                    )
             else:
                 executed = True
                 print(f"{Fore.GREEN}[WPSCAN Agent] Execution complete{Style.RESET_ALL}")

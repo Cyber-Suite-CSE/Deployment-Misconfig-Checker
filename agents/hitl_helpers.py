@@ -11,7 +11,6 @@ from __future__ import annotations
 import getpass
 import json
 import os
-import re
 import sys
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -31,39 +30,8 @@ CHECKPOINT_DB_PATH = os.path.join(_PROJECT_ROOT, ".langgraph_checkpoint.sqlite")
 SESSION_STORE_PATH = os.path.join(_PROJECT_ROOT, ".langgraph_sessions.json")
 
 
-# Tool name → leading token that must remain in the `command` arg.
-# Editing UI strips this on display and re-prepends it on submit so the user
-# physically cannot remove the executable name.
-TOOL_COMMAND_PREFIX: Dict[str, str] = {
-    "nmap_executor": "nmap",
-    "wpscan_executor": "wpscan",
-    "nikto_executor": "nikto",
-    "masscan_executor": "masscan",
-}
-
-
-def split_locked_prefix(tool_name: str, key: str, value: Any):
-    """Return (locked_prefix, editable_suffix) for the command arg of a gated tool.
-
-    Returns (None, value) if no lock applies (different tool, different arg key,
-    non-string value, or command starts with an unexpected token).
-    """
-    if key != "command" or not isinstance(value, str):
-        return None, value
-    prefix = TOOL_COMMAND_PREFIX.get(tool_name)
-    if not prefix:
-        return None, value
-    stripped = value.lstrip()
-    if not stripped.startswith(prefix):
-        return None, value
-    return prefix, stripped[len(prefix):].lstrip()
-
-
-def apply_locked_prefix(prefix: Optional[str], edited_suffix: str) -> str:
-    """Reattach a locked tool prefix to an edited command suffix."""
-    if prefix is None:
-        return edited_suffix
-    return f"{prefix} {edited_suffix.lstrip()}".rstrip()
+# Tools no longer accept a free-form `command` string — every executor takes
+# typed Pydantic fields, and the executable name is hardcoded inside the tool.
 
 
 def format_rejection_message(tool_name: str, reason: str) -> str:
@@ -96,61 +64,66 @@ def get_checkpointer(*, db_path: str = CHECKPOINT_DB_PATH):
     conn = sqlite3.connect(db_path, check_same_thread=False)
     return SqliteSaver(conn)
 
-_IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b")
-_URL_RE = re.compile(r"https?://[^\s'\"]+")
-_DOMAIN_RE = re.compile(
-    r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b"
-)
+def _summarise_args(args: Dict[str, Any]) -> str:
+    """Render a typed args dict as a compact key=value summary for the HITL UI."""
+    parts: List[str] = []
+    for key, value in args.items():
+        if value is None or value == [] or value is False:
+            continue
+        if isinstance(value, str):
+            parts.append(f"{key}={value!r}")
+        elif isinstance(value, (list, tuple)):
+            parts.append(f"{key}={list(value)}")
+        else:
+            parts.append(f"{key}={value}")
+    return ", ".join(parts) if parts else "<no args>"
 
 
-def _extract_target(text: str) -> str:
-    for matcher in (_URL_RE, _IP_RE, _DOMAIN_RE):
-        m = matcher.search(text)
-        if m:
-            return m.group(0)
-    return "<no target found>"
-
-
-def _extract_command(args: Dict[str, Any]) -> str:
-    for key in ("command", "cmd", "url", "target"):
-        if key in args and isinstance(args[key], str):
-            return args[key]
-    return json.dumps(args, default=str)
+def _primary_target(args: Dict[str, Any]) -> str:
+    """Pull the most user-meaningful target field out of a typed args dict."""
+    for key in ("url", "target"):
+        v = args.get(key)
+        if isinstance(v, str) and v:
+            return v
+    targets = args.get("targets")
+    if isinstance(targets, list) and targets:
+        return ", ".join(str(t) for t in targets[:3]) + ("…" if len(targets) > 3 else "")
+    for key in ("exploit_path", "cve_id", "vulnerability_keywords"):
+        v = args.get(key)
+        if isinstance(v, str) and v:
+            return v
+    return "<no target>"
 
 
 def describe_nmap(tool_call, state, runtime) -> str:  # noqa: ANN001 - matches _DescriptionFactory
-    cmd = _extract_command(tool_call.get("args", {}))
-    target = _extract_target(cmd)
+    args = tool_call.get("args", {}) or {}
     return (
-        f"nmap_executor: SCAN {target} | command='{cmd}' "
-        f"(intrusive — scans real network)"
+        f"nmap_executor: SCAN {_primary_target(args)} | "
+        f"{_summarise_args(args)} (intrusive — scans real network)"
     )
 
 
 def describe_wpscan(tool_call, state, runtime) -> str:  # noqa: ANN001
-    cmd = _extract_command(tool_call.get("args", {}))
-    target = _extract_target(cmd)
+    args = tool_call.get("args", {}) or {}
     return (
-        f"wpscan_executor: WORDPRESS SCAN {target} | command='{cmd}' "
-        f"(intrusive — probes WordPress vulns)"
+        f"wpscan_executor: WORDPRESS SCAN {_primary_target(args)} | "
+        f"{_summarise_args(args)} (intrusive — probes WordPress vulns)"
     )
 
 
 def describe_nikto(tool_call, state, runtime) -> str:  # noqa: ANN001
-    cmd = _extract_command(tool_call.get("args", {}))
-    target = _extract_target(cmd)
+    args = tool_call.get("args", {}) or {}
     return (
-        f"nikto_executor: WEB SCAN {target} | command='{cmd}' "
-        f"(intrusive — probes web server vulns)"
+        f"nikto_executor: WEB SCAN {_primary_target(args)} | "
+        f"{_summarise_args(args)} (intrusive — probes web server vulns)"
     )
 
 
 def describe_masscan(tool_call, state, runtime) -> str:  # noqa: ANN001
-    cmd = _extract_command(tool_call.get("args", {}))
-    target = _extract_target(cmd)
+    args = tool_call.get("args", {}) or {}
     return (
-        f"masscan_executor: FAST PORT SWEEP {target} | command='{cmd}' "
-        f"(very intrusive — high packet rate, raw socket)"
+        f"masscan_executor: FAST PORT SWEEP {_primary_target(args)} | "
+        f"{_summarise_args(args)} (very intrusive — high packet rate, raw socket)"
     )
 
 
@@ -187,26 +160,19 @@ def _read_line(prompt: str) -> str:
 
 
 def _edit_args(original: Dict[str, Any], *, tool_name: str) -> Dict[str, Any]:
+    """Walk the typed args dict and let the operator edit each field.
+
+    Tools no longer accept a free-form `command` string — every field is
+    typed (target, ports, scan_profile, etc.) and the executable name is
+    fixed inside the tool. So we just iterate keys; press Enter to keep,
+    or type a new value (JSON for non-string types).
+    """
+    del tool_name  # retained for backwards-compatible signature
     print(
         f"{Fore.YELLOW}[HITL] Edit mode — press Enter to keep current value{Style.RESET_ALL}"
     )
     edited: Dict[str, Any] = {}
     for key, value in original.items():
-        locked_prefix, editable_value = split_locked_prefix(tool_name, key, value)
-        if locked_prefix is not None:
-            print(
-                f"  {Fore.CYAN}{key}{Style.RESET_ALL} = "
-                f"{Fore.MAGENTA}{locked_prefix}{Style.RESET_ALL} "
-                f"{Fore.WHITE}{editable_value}{Style.RESET_ALL} "
-                f"{Style.DIM}(prefix locked){Style.RESET_ALL}"
-            )
-            new_raw = _read_line(f"  new args after '{locked_prefix}' > ").strip()
-            if not new_raw:
-                edited[key] = value
-                continue
-            edited[key] = apply_locked_prefix(locked_prefix, new_raw)
-            continue
-
         current = json.dumps(value, default=str) if not isinstance(value, str) else value
         print(f"  {Fore.CYAN}{key}{Style.RESET_ALL} = {Fore.WHITE}{current}{Style.RESET_ALL}")
         new_raw = _read_line(f"  new {key} > ").strip()
@@ -239,25 +205,19 @@ def prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
     return _cli_prompt_for_decision(interrupt)
 
 
-def _final_command_for_decision(
+def _final_args_for_decision(
     decision: Dict[str, Any], original: Dict[str, Any]
-) -> Optional[str]:
-    """Return the command string that will actually be executed for a decision.
+) -> Optional[Dict[str, Any]]:
+    """Return the typed args dict that will actually run for a decision.
 
-    For ``approve``/``edit`` we look at the post-decision args; for ``reject``
-    nothing runs, so we return ``None`` to skip the root check.
+    For ``approve`` we use the original args; for ``edit`` we take the
+    post-edit args; for ``reject`` nothing runs, so we return ``None``.
     """
     if decision.get("type") == "reject":
         return None
     if decision.get("type") == "edit":
-        edited = (decision.get("edited_action") or {}).get("args") or {}
-        return sudo_secrets.extract_command(
-            (decision.get("edited_action") or {}).get("name") or "",
-            edited,
-        )
-    return sudo_secrets.extract_command(
-        original.get("name") or "", original.get("args") or {}
-    )
+        return (decision.get("edited_action") or {}).get("args") or {}
+    return original.get("args") or {}
 
 
 def maybe_capture_sudo_password(
@@ -267,7 +227,7 @@ def maybe_capture_sudo_password(
     *,
     password_reader: Callable[[str], str] = getpass.getpass,
 ) -> bool:
-    """If the decision will execute a command that needs root, capture the password.
+    """If the decision will execute a tool that needs root, capture the password.
 
     Stores the password in :mod:`agents.sudo_secrets` keyed by ``thread_id``
     and annotates the decision with ``"requires_sudo": True`` so the audit
@@ -277,8 +237,8 @@ def maybe_capture_sudo_password(
     every privileged scan in the same session.
     """
     tool_name = (decision.get("edited_action") or {}).get("name") or request.get("name") or ""
-    command = _final_command_for_decision(decision, request)
-    if not command or not sudo_secrets.command_needs_root(tool_name, command):
+    args = _final_args_for_decision(decision, request)
+    if args is None or not sudo_secrets.args_need_root(tool_name, args):
         return False
 
     decision["requires_sudo"] = True
@@ -336,6 +296,15 @@ def _cli_prompt_for_decision(interrupt: Interrupt) -> Dict[str, Any]:
             print(f"  {Fore.WHITE}{description}{Style.RESET_ALL}")
         if args:
             print(f"  {Fore.YELLOW}args:{Style.RESET_ALL} {json.dumps(args, default=str, indent=2)}")
+            # Render the exact argv that will run, so the operator sees the
+            # effective command line — including a sudo prefix when relevant.
+            try:
+                from tools.preview import preview_command  # local import: avoid import-time cycle
+                effective = preview_command(name, args)
+            except Exception:
+                effective = None
+            if effective:
+                print(f"  {Fore.GREEN}effective:{Style.RESET_ALL} {effective}")
         print(
             f"  {Fore.RED}EXECUTE?{Style.RESET_ALL} "
             f"({Fore.GREEN}a{Style.RESET_ALL})pprove / "

@@ -25,11 +25,7 @@ from textual.containers import Vertical
 from textual.widgets import Input, Static
 
 from agents import sudo_secrets
-from agents.hitl_helpers import (
-    apply_locked_prefix,
-    format_rejection_message,
-    split_locked_prefix,
-)
+from agents.hitl_helpers import format_rejection_message
 
 
 class HITLBar(Vertical):
@@ -58,7 +54,7 @@ class HITLBar(Vertical):
     }
     HITLBar > .body {
         color: $text-muted;
-        height: 1;
+        height: auto;
     }
     HITLBar > .actions {
         color: $text-muted;
@@ -150,11 +146,17 @@ class HITLBar(Vertical):
             name = req.get("name", "<unknown>")
             description = req.get("description", "") or ""
             args = req.get("args", {}) or {}
-            preview = description or self._extract_command(args)
+            summary = description or self._extract_command(args)
+            effective = self._effective_command(name, args)
             total = len(self._action_requests)
             counter = f" [{self._idx + 1}/{total}]" if total > 1 else ""
             title.update(f"{name}{counter}")
-            body.update(self._truncate(preview, 200))
+            body_lines = [self._truncate(summary, 200)]
+            if effective:
+                body_lines.append(
+                    f"[green]effective:[/green] {self._truncate(effective, 200)}"
+                )
+            body.update("\n".join(body_lines))
             body.display = True
             actions.update(self._render_options())
             actions.display = True
@@ -169,18 +171,9 @@ class HITLBar(Vertical):
             key = self._edit_keys[self._edit_idx]
             current = self._edited.get(key, args.get(key))
             tool_name = req.get("name", "")
-            locked_prefix, editable_value = split_locked_prefix(tool_name, key, current)
-            if locked_prefix is not None:
-                initial = editable_value if isinstance(editable_value, str) else ""
-                placeholder = f"args after '{locked_prefix}'"
-                body_text = (
-                    f"{key}: [bold]{locked_prefix}[/bold] [dim](locked)[/dim] "
-                    f"· {self._edit_idx + 1}/{len(self._edit_keys)}"
-                )
-            else:
-                initial = current if isinstance(current, str) else json.dumps(current, default=str)
-                placeholder = key
-                body_text = f"{key} ({self._edit_idx + 1}/{len(self._edit_keys)})"
+            initial = current if isinstance(current, str) else json.dumps(current, default=str)
+            placeholder = key
+            body_text = f"{key} ({self._edit_idx + 1}/{len(self._edit_keys)})"
             title.update(f"edit · {tool_name or '<unknown>'}")
             body.update(body_text)
             body.display = True
@@ -318,11 +311,7 @@ class HITLBar(Vertical):
             key = self._edit_keys[self._edit_idx]
             raw = event.value
             original = args.get(key)
-            tool_name = req.get("name", "")
-            locked_prefix, _ = split_locked_prefix(tool_name, key, original)
-            if locked_prefix is not None:
-                self._edited[key] = apply_locked_prefix(locked_prefix, raw)
-            elif isinstance(original, str):
+            if isinstance(original, str):
                 self._edited[key] = raw
             else:
                 try:
@@ -396,15 +385,12 @@ class HITLBar(Vertical):
         if sudo_secrets.has_password(self._thread_id):
             return False
         if decision.get("type") == "edit":
-            edited = (decision.get("edited_action") or {}).get("args") or {}
+            args = (decision.get("edited_action") or {}).get("args") or {}
             tool_name = (decision.get("edited_action") or {}).get("name") or ""
-            command = sudo_secrets.extract_command(tool_name, edited)
         else:
             tool_name = request.get("name") or ""
-            command = sudo_secrets.extract_command(tool_name, request.get("args") or {})
-        if not command:
-            return False
-        return sudo_secrets.command_needs_root(tool_name, command)
+            args = request.get("args") or {}
+        return sudo_secrets.args_need_root(tool_name, args)
 
     def _advance(self) -> None:
         self._idx += 1
@@ -425,13 +411,27 @@ class HITLBar(Vertical):
     # ------------------------------------------------------------------
     @staticmethod
     def _extract_command(args: Dict[str, Any]) -> str:
-        for key in ("command", "cmd", "url", "target"):
-            if key in args and isinstance(args[key], str):
-                return args[key]
+        """Render a one-line preview of the typed args dict for the HITL bar."""
+        for key in ("url", "target"):
+            v = args.get(key)
+            if isinstance(v, str) and v:
+                return v
+        targets = args.get("targets")
+        if isinstance(targets, list) and targets:
+            return ", ".join(str(t) for t in targets[:3]) + ("…" if len(targets) > 3 else "")
         try:
             return json.dumps(args, default=str)
         except Exception:
             return str(args)
+
+    @staticmethod
+    def _effective_command(tool_name: str, args: Dict[str, Any]) -> Optional[str]:
+        """Render the exact argv that will run, or None on validation error."""
+        try:
+            from tools.preview import preview_command  # local: avoid import cycle
+            return preview_command(tool_name, args)
+        except Exception:
+            return None
 
     @staticmethod
     def _truncate(text: str, limit: int) -> str:

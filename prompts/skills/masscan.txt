@@ -1,94 +1,87 @@
 ═══════════════════════════════════════════════════════════════
-MASSCAN OPERATIONAL SKILL
+MASSCAN OPERATIONAL SKILL — TYPED PARAMETERS
 ═══════════════════════════════════════════════════════════════
 
 PURPOSE
-masscan is an internet-scale port discovery tool. It is the fastest
-way to find open ports across a /16 or /24, but it does NOT do
-service detection, version probing, or OS fingerprinting. Pair it
-with nmap for follow-up service identification.
+masscan is the fastest way to find open ports across large networks
+(/16, /24, etc.). It does NOT do service detection, version probing,
+or OS fingerprinting — pair it with nmap for follow-up.
+
+The execute_masscan tool takes typed parameters; there is NO command
+string. Every flag is a typed field validated by Pydantic. Every real
+scan is auto-elevated via sudo (masscan needs raw-socket access).
 
 ═══════════════════════════════════════════════════════════════
-COMMAND SHAPE — ALWAYS THESE THREE PIECES
+REQUIRED INPUT
 ═══════════════════════════════════════════════════════════════
 
-  masscan -p<ports> <target> --rate=<N>
+targets   list of one or more entries. Each entry must be:
+            - a single IP        ("10.0.0.5")
+            - a CIDR block       ("10.0.0.0/24")
+            - a range            ("10.0.0.1-10.0.0.50")
+          Up to 64 entries per call.
 
-Every real scan MUST specify:
-  1. Ports     -p<ports>     There is NO default port set.
-  2. Target    <target>      IP, range, or CIDR.
-  3. Rate      --rate=<N>    Packets per second.
-
-Forget any of these and the scan does nothing useful.
-
-═══════════════════════════════════════════════════════════════
-PORT RANGE SYNTAX
-═══════════════════════════════════════════════════════════════
-
-  -p80                Single port
-  -p80,443,8080       Comma-separated list
-  -p1-65535           Range (full TCP space)
-  -p22,80-100,443     Mixed
-  -pU:53,U:161        UDP ports (prefix with U:)
+ports     port spec string. Required (there is no default port set).
+          Formats:
+            "80"               single port
+            "80,443,8080"      list
+            "1-65535"          range
+            "22,80-100,443"    mixed
+            "U:53,T:80"        with explicit transport
+                               (U=UDP, T=TCP)
 
 ═══════════════════════════════════════════════════════════════
-RATE GUIDANCE
+OPTIONAL PARAMETERS
 ═══════════════════════════════════════════════════════════════
 
-  --rate=100          Polite. WAN-safe baseline.
-  --rate=1000         Default for /24 scans.       (PREFERRED on LAN)
-  --rate=10000        For /16 sweeps.
-  --rate=100000+      Only on dedicated lab links — will saturate
-                      a typical home/office uplink.
+rate=N            packets/second. Default 1000.
+  100             polite, WAN-safe baseline
+  1000            LAN default (PREFERRED)
+  10000           /16 sweeps
+  100000+         lab links only
 
-When in doubt, start at 1000.
+banners=true      pull lightweight banners from open ports.
 
-═══════════════════════════════════════════════════════════════
-COMMON FLAGS
-═══════════════════════════════════════════════════════════════
+excludes=[ ... ]  IPs/CIDRs/ranges to skip. Same format as targets.
 
--p<ports>           Ports (required).
---rate=<N>          Packets/second (required).
---banners           Pull lightweight banners from open ports.
---source-ip <ip>    Spoof source IP (advanced; rarely needed).
---exclude <ip>      Skip an IP/range you must not touch.
---excludefile <f>   Same, from a file.
--iL <file>          Read targets from a file.
+interface="eth0"  bind to a specific NIC (alphanumerics, _.-, ≤16 chars).
 
-═══════════════════════════════════════════════════════════════
-ROOT REQUIREMENT
-═══════════════════════════════════════════════════════════════
-
-masscan needs raw socket access on most systems. The tool prepends
-sudo automatically for real scans; --help / --version / --regress
-are exempt.
+wait_seconds=10   how long to wait for late responses after the last
+                  probe is sent (0-120). Default 10.
 
 ═══════════════════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════════════════
 
 "Sweep 10.0.0.0/24 fast"
-  masscan -p1-65535 10.0.0.0/24 --rate=1000
+  targets=["10.0.0.0/24"], ports="1-65535", rate=1000
 
 "Find web servers across 192.168.0.0/16"
-  masscan -p80,443,8080,8443 192.168.0.0/16 --rate=10000
+  targets=["192.168.0.0/16"], ports="80,443,8080,8443", rate=10000
 
 "Quick check for SSH on this subnet"
-  masscan -p22 192.168.1.0/24 --rate=1000
+  targets=["192.168.1.0/24"], ports="22", rate=1000
 
 "Scan UDP DNS across the lab range"
-  masscan -pU:53 10.0.0.0/16 --rate=5000
+  targets=["10.0.0.0/16"], ports="U:53", rate=5000
 
-"How does masscan work?"
-  masscan --help
+"Scan two specific hosts on common ports, skip 10.0.0.5"
+  targets=["10.0.0.10","10.0.0.11"], ports="22,80,443",
+  excludes=["10.0.0.5"], rate=1000
+
+═══════════════════════════════════════════════════════════════
+ROOT REQUIREMENT
+═══════════════════════════════════════════════════════════════
+
+masscan needs raw-socket access. The tool always prepends sudo via
+the cached HITL password. If no password is cached yet, the operator
+must approve a privileged tool call once to enter it.
 
 ═══════════════════════════════════════════════════════════════
 WHAT MASSCAN DOES NOT DO
 ═══════════════════════════════════════════════════════════════
 
-- No service/version detection — use nmap -sV after.
-- No OS fingerprinting — use nmap -O.
+- No service/version detection — use nmap (scan_profile="standard"
+  with ports="<found>", service_detection=true) afterwards.
+- No OS fingerprinting — use nmap with os_detection=true.
 - No NSE scripts.
-
-If the user asks for those, run a port-discovery scan with masscan
-first, then suggest the follow-up nmap pass.

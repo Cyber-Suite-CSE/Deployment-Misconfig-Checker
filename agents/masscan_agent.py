@@ -44,7 +44,11 @@ class MasscanAgent:
         system_prompt = MASSCAN_AGENT_PROMPT.format(
             skill=PromptProvider.get_skill("masscan"),
             tool_names="execute_masscan",
-            tools="execute_masscan: Executes real masscan commands and returns actual output",
+            tools=(
+                "execute_masscan: runs masscan with typed parameters (targets, "
+                "ports, rate, banners, excludes, interface, wait_seconds). "
+                "There is no command string — choose the right parameters."
+            ),
             input="",
             agent_scratchpad="",
         )
@@ -75,20 +79,18 @@ class MasscanAgent:
 
         try:
             execution_request = f"""
-MANDATORY COMMAND EXECUTION TASK:
+MANDATORY SCAN TASK:
 {request}
 
 YOU MUST:
-1. Use the execute_masscan tool RIGHT NOW
-2. Pass the appropriate masscan command to it (remember: -p<ports> <target> --rate=N)
-3. The tool will show [DEBUG] output with the real results
-4. Return those real results
+1. Call the execute_masscan tool RIGHT NOW with typed parameters.
+2. Set `targets` (list of IP/CIDR/range) and `ports` (e.g. '1-65535'),
+   then choose `rate` and other fields from the schema. There is NO
+   command string.
+3. The tool will show [DEBUG] output with the real argv and results.
+4. Return those real results.
 
-DO NOT just explain - USE THE TOOL!
-If this is about scanning, construct and EXECUTE the masscan command.
-If this is about masscan help, EXECUTE 'masscan --help'.
-
-EXECUTE THE COMMAND NOW using execute_masscan tool!
+DO NOT just explain — USE THE TOOL with parameters!
 """
 
             print(
@@ -130,24 +132,23 @@ EXECUTE THE COMMAND NOW using execute_masscan tool!
                     f"{Fore.YELLOW}[MASSCAN Agent] Attempting direct tool execution...{Style.RESET_ALL}"
                 )
 
-                request_lower = request.lower()
                 cidr_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}/\d{1,2}\b"
                 ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
                 cidrs = re.findall(cidr_pattern, request)
                 ips = re.findall(ip_pattern, request)
                 target = cidrs[0] if cidrs else (ips[0] if ips else None)
 
-                if "help" in request_lower and not target:
-                    fallback_result = execute_masscan.invoke({"command": "masscan --help"})
-                elif target:
+                if target:
                     fallback_result = execute_masscan.invoke(
-                        {"command": f"masscan -p1-65535 {target} --rate=1000"}
+                        {"targets": [target], "ports": "1-65535", "rate": 1000}
                     )
+                    content = f"Direct execution result:\n{fallback_result}"
                     executed = True
                 else:
-                    fallback_result = execute_masscan.invoke({"command": "masscan --help"})
-
-                content = f"Direct execution result:\n{fallback_result}"
+                    content = (
+                        "Agent did not execute a tool and no IP/CIDR could be "
+                        "extracted from the request for a direct fallback."
+                    )
 
             print(f"{Fore.GREEN}[MASSCAN Agent] Execution complete{Style.RESET_ALL}")
             print(
