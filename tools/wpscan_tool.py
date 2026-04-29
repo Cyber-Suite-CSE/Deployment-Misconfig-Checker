@@ -138,7 +138,11 @@ class WpscanInput(BaseModel):
     url: str = Field(
         description=(
             "Target WordPress site URL with scheme. "
-            "Examples: 'https://example.com', 'http://blog.local/wp'."
+            "Examples: 'https://example.com', 'http://blog.local/wp'. "
+            "When targeting localhost (or 127.0.0.1 / ::1), the port MUST be "
+            "included in the URL (e.g. 'http://localhost:8080'). A bare "
+            "'http://localhost' will hit port 80 and almost certainly miss "
+            "the WordPress instance."
         ),
     )
     enumerate: List[
@@ -212,6 +216,12 @@ class WpscanInput(BaseModel):
             raise ValueError("url is missing a host")
         if any(c in v for c in [" ", "\t", "\n", "\r"]):
             raise ValueError("url must not contain whitespace")
+        host = (parsed.hostname or "").lower()
+        if host in {"localhost", "127.0.0.1", "::1"} and parsed.port is None:
+            raise ValueError(
+                f"localhost targets must include a port in the URL "
+                f"(e.g. 'http://{host}:8080'); got {v!r}"
+            )
         return v
 
     @field_validator("usernames")
