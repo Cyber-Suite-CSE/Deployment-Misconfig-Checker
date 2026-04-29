@@ -4,7 +4,7 @@ import ipaddress
 import re
 import subprocess
 from typing import List, Literal, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from colorama import Fore, Style, init
 from langchain_core.tools import tool
@@ -116,12 +116,29 @@ class NiktoInput(BaseModel):
 
 
 def build_nikto_argv(params: NiktoInput) -> List[str]:
-    argv: List[str] = ["nikto", "-h", params.target]
-    if params.port is not None:
+    target = params.target
+    is_url = target.startswith(("http://", "https://"))
+    # localhost without a scheme + explicit port: build a full URL so nikto
+    # treats it as a web target rather than a bare hostname on port 80.
+    if not is_url and params.port is not None and target.lower() in {"localhost", "127.0.0.1", "::1"}:
+        scheme = "https" if params.ssl else "http"
+        target = f"{scheme}://{target}:{params.port}"
+        is_url = True
+    # nikto rejects `-p` together with a full URI; fold the port into the URL.
+    elif is_url and params.port is not None:
+        parsed = urlparse(target)
+        host = parsed.hostname or ""
+        netloc = f"{host}:{params.port}"
+        target = urlunparse(
+            (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+        )
+
+    argv: List[str] = ["nikto", "-h", target]
+    if params.port is not None and not is_url:
         argv += ["-p", str(params.port)]
     # nikto auto-derives SSL from an https:// URL; only add -ssl when requested
     # explicitly and the target isn't already an https URL.
-    if params.ssl and not params.target.startswith("https://"):
+    if params.ssl and not target.startswith("https://"):
         argv.append("-ssl")
     if params.tuning:
         argv += ["-Tuning", "".join(params.tuning)]
