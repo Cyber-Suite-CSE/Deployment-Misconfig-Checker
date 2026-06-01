@@ -121,3 +121,16 @@ To add new tools:
 - [ ] Implement agent memory for context retention
 - [ ] Add result parsing and structured output
 - [ ] Create web UI interface
+
+## Monitoring & CI/CD
+
+### Prometheus Monitoring
+This service exposes a native, lightweight `/metrics` endpoint returning Prometheus-formatted telemetry (such as uptime, memory, and CPU usage).
+- **Metrics Endpoint:** `/metrics`
+- **Scraping Config:** Configured with annotations `prometheus.io/scrape: "true"` in the deployment manifest.
+
+### CI/CD Pipeline
+GitHub Actions workflow is located at `.github/workflows/deploy.yml` which triggers on push to `main` branch:
+- **Build Optimization:** Uses `docker/setup-buildx-action@v3` with layer caching enabled (`cache-from: type=gha`, `cache-to: type=gha,mode=max`).
+- **Target Registry:** `csecyber/cyber-suite-misconfig-checker`
+- **Tags Generated:** Dual tags for `:latest` and the unique commit hash `:${ github.sha }`.
