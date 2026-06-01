@@ -47,4 +47,4 @@ RUN apk add --no-cache \
     && rm -rf .git .github
 
 # Run FastAPI app
-CMD ["sh", "-c", "uvicorn api:app --host 0.0.0.0 --port 8003"]
+CMD ["sh", "-c", "uvicorn backend.api:app --host 0.0.0.0 --port 8003"]
