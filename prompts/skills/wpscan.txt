@@ -1,0 +1,108 @@
+═══════════════════════════════════════════════════════════════
+WPSCAN OPERATIONAL SKILL — TYPED PARAMETERS
+═══════════════════════════════════════════════════════════════
+
+PURPOSE
+WPScan probes a target URL for WordPress version, plugins, themes,
+users, and known CVEs. The execute_wpscan tool takes typed parameters;
+there is NO command string. Every flag is a typed field validated by
+Pydantic.
+
+═══════════════════════════════════════════════════════════════
+REQUIRED INPUT
+═══════════════════════════════════════════════════════════════
+
+url
+  Full URL with scheme (http:// or https://). e.g.
+  "https://example.com" or "http://blog.local/wp". An IP without a
+  scheme is rejected by the validator.
+
+═════════════════════════════════════════════════════════════════
+PORT HANDLING
+═════════════════════════════════════════════════════════════════
+
+Always append the port number to the --url value.  Services
+discovered by other tools (e.g. nmap) often report only an IP
+address with no DNS hostname, and may run on non-standard ports
+(8080, 8443, etc.).  Without an explicit port, WPScan defaults
+to 80/443 and will miss services bound elsewhere.
+
+  Correct:   --url http://192.168.1.50:8080
+  Correct:   --url https://10.0.0.1:443
+  Correct:   --url http://localhost:8080
+  Wrong:     --url http://192.168.1.50          ← may miss the service
+
+═══════════════════════════════════════════════════════════════
+ENUMERATE — WHAT TO SEARCH FOR
+═══════════════════════════════════════════════════════════════
+
+enumerate=[ ... ]   list of items, default ["plugins-all","themes-all","users"].
+
+Allowed values:
+  plugins-all          all plugins (loud, comprehensive)
+  plugins-popular      most-popular plugins only
+  plugins-vulnerable   only plugins with known vulns
+  themes-all           all themes
+  themes-popular       most-popular themes
+  themes-vulnerable    only themes with known vulns
+  users                user enumeration
+  media                media file enumeration
+  config-backups       look for backup config files
+  db-exports           look for database exports
+  timthumbs            look for vulnerable timthumb installs
+
+═══════════════════════════════════════════════════════════════
+DETECTION MODES
+═══════════════════════════════════════════════════════════════
+
+detection_mode               passive | aggressive | mixed   (default: mixed)
+plugins_detection            passive | aggressive | mixed   (default: aggressive)
+plugins_version_detection    passive | aggressive | mixed   (default: mixed)
+
+aggressive = loud but most thorough. mixed = balanced. passive = gentle.
+
+═══════════════════════════════════════════════════════════════
+OPTIONAL FLAGS
+═══════════════════════════════════════════════════════════════
+
+random_user_agent=true   (default) rotate UA to reduce blocking
+api_token="..."          override the WPSCAN_API_TOKEN env var
+
+═══════════════════════════════════════════════════════════════
+PASSWORD ATTACK — ONLY WHEN EXPLICITLY ASKED
+═══════════════════════════════════════════════════════════════
+
+password_attack="wp-login" | "xmlrpc" | "xmlrpc-multicall"
+usernames=["admin","editor"]   required when password_attack is set,
+                               max 10 usernames, each ≤64 chars,
+                               alphanumerics + _.-@ only.
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Scan the WordPress site at https://example.com"
+  url="https://example.com"
+
+"Enumerate only users on https://blog.example.com"
+  url="https://blog.example.com", enumerate=["users"]
+
+"Find vulnerable plugins on https://site.com"
+  url="https://site.com", enumerate=["plugins-vulnerable"]
+
+"Scan a WordPress site found on a non-standard port"
+  wpscan --url http://192.168.1.50:8080
+
+"Scan WordPress running on localhost"
+  wpscan --url http://localhost:8080
+
+"How does wpscan work?"
+  wpscan --help
+
+═══════════════════════════════════════════════════════════════
+LIMITS
+═══════════════════════════════════════════════════════════════
+
+- File-output flags do not exist in this schema; output streams back to you.
+- WPScan can rate-limit itself; large sites may take minutes (timeout 600s).
+- Without WPSCAN_API_TOKEN set, vuln-DB lookups are restricted.

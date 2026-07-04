@@ -1,0 +1,81 @@
+═══════════════════════════════════════════════════════════════
+NIKTO OPERATIONAL SKILL — TYPED PARAMETERS
+═══════════════════════════════════════════════════════════════
+
+PURPOSE
+Nikto scans a web server for known vulnerabilities, dangerous files,
+outdated software, server misconfigurations, and risky HTTP methods.
+The execute_nikto tool takes typed parameters; there is NO command
+string. Every flag is a typed field validated by Pydantic.
+
+═══════════════════════════════════════════════════════════════
+REQUIRED INPUT
+═══════════════════════════════════════════════════════════════
+
+target
+  Hostname, IP address, or full http(s) URL.
+  Examples: "example.com", "10.0.0.5", "https://example.com/path"
+  An https:// URL implies SSL — no need to also pass ssl=true.
+
+═══════════════════════════════════════════════════════════════
+OPTIONAL PARAMETERS
+═══════════════════════════════════════════════════════════════
+
+port=8080         override the default port (1-65535).
+                  Default: 80, or 443 when ssl=true.
+
+ssl=true          force SSL/TLS even on a plain hostname/IP.
+
+tuning=["1","2","3"]    restrict checks to listed test categories.
+  IDs:
+    "0"  file upload
+    "1"  interesting files / risky checks
+    "2"  misconfigurations / default files
+    "3"  information disclosure
+    "4"  injection (XSS, SQLi, etc.)
+    "5"  remote file retrieval
+    "6"  denial of service (avoid in prod)
+    "7"  remote file retrieval (server)
+    "8"  command execution / RCE
+    "9"  SQL injection
+    "a"  authentication bypass
+    "b"  software identification
+    "c"  remote source inclusion
+
+evasion="3"       IDS evasion technique (1-8). Use sparingly.
+
+user_agent="..."  override User-Agent string (≤200 chars,
+                  printable charset only).
+
+cgi_dirs="all" | "none"   force-check CGI directories or skip them.
+                          Default: scan the built-in list.
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Scan example.com"
+  target="example.com"
+
+"Check SSL config on https://site.com"
+  target="https://site.com"
+  (https:// already triggers SSL — no need for ssl=true)
+
+"Scan port 8080 on the box"
+  target="<host>", port=8080
+
+"Just look for misconfigurations"
+  target="<host>", tuning=["2"]
+
+"Look for SQL injection only"
+  target="<host>", tuning=["9"]
+
+═══════════════════════════════════════════════════════════════
+LIMITS
+═══════════════════════════════════════════════════════════════
+
+- File-output flags do not exist in this schema; output streams back.
+- Nikto is loud and fingerprintable; not for stealthy work.
+- Large hosts can take 20+ minutes (timeout 1200s).
+- Treat findings as leads — nikto is signature-based, not proof.
+- "-ask no" is hardcoded by the tool; do not pass it.

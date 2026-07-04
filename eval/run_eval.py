@@ -35,6 +35,18 @@ PAPER_PROMPT = (
 )
 
 
+def _auto_approve_prompter(interrupt):
+    """Approve every action_request in an interrupt without prompting.
+
+    Matches the contract of ``agents.hitl_helpers.prompt_for_decision``: one
+    decision per ``action_request``, in order. Used by ``--auto-approve`` so
+    the eval can run unattended.
+    """
+    payload = interrupt.value or {}
+    action_requests = payload.get("action_requests") or []
+    return {"decisions": [{"type": "approve"} for _ in action_requests]}
+
+
 def run_v1(prompt: str) -> dict[str, Any]:
     """Run V1: single agent, GPT-4o, all tools."""
     from v1.single_agent import SingleSecurityAgent
@@ -133,6 +145,11 @@ def main() -> None:
         default=Path(__file__).resolve().parent / "results",
         help="Directory for per-run JSON + summary outputs",
     )
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Bypass HITL: auto-approve every tool interrupt (required for unattended runs).",
+    )
     args = parser.parse_args()
 
     versions = [v.strip() for v in args.versions.split(",") if v.strip()]
@@ -148,31 +165,43 @@ def main() -> None:
     print(f"[eval] versions: {versions}, runs each: {args.runs}")
     print(f"[eval] output dir: {args.out_dir}")
 
-    all_metrics: dict[str, list[dict]] = {v: [] for v in versions}
-    for version in versions:
-        runner = VERSION_RUNNERS[version]
-        for i in range(1, args.runs + 1):
-            print(f"\n=== [{version}] run {i}/{args.runs} ===")
-            try:
-                run = runner(args.prompt)
-            except Exception as exc:  # noqa: BLE001 — record then continue
-                print(f"[{version}] run {i} FAILED: {exc}")
-                traceback.print_exc()
-                run = {
-                    "version": version,
-                    "final_message": "",
-                    "tool_calls": [],
-                    "wall_clock_seconds": 0.0,
-                    "all_messages": [],
-                    "error": f"{type(exc).__name__}: {exc}",
-                }
-            metrics = collect_metrics(run)
-            print(f"[{version}] metrics: {metrics}")
-            _save_run(run, metrics, args.out_dir, version, i)
-            all_metrics[version].append(metrics)
+    if args.auto_approve:
+        from agents.hitl_helpers import set_prompter
 
-    write_summary(all_metrics, args.out_dir)
-    print(f"\n[eval] wrote summary.json/md/tex to {args.out_dir}")
+        set_prompter(_auto_approve_prompter)
+        print("[eval] HITL auto-approve enabled — every tool call will be approved without prompting.")
+
+    try:
+        all_metrics: dict[str, list[dict]] = {v: [] for v in versions}
+        for version in versions:
+            runner = VERSION_RUNNERS[version]
+            for i in range(1, args.runs + 1):
+                print(f"\n=== [{version}] run {i}/{args.runs} ===")
+                try:
+                    run = runner(args.prompt)
+                except Exception as exc:  # noqa: BLE001 — record then continue
+                    print(f"[{version}] run {i} FAILED: {exc}")
+                    traceback.print_exc()
+                    run = {
+                        "version": version,
+                        "final_message": "",
+                        "tool_calls": [],
+                        "wall_clock_seconds": 0.0,
+                        "all_messages": [],
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                metrics = collect_metrics(run)
+                print(f"[{version}] metrics: {metrics}")
+                _save_run(run, metrics, args.out_dir, version, i)
+                all_metrics[version].append(metrics)
+
+        write_summary(all_metrics, args.out_dir)
+        print(f"\n[eval] wrote summary.json/md/tex to {args.out_dir}")
+    finally:
+        if args.auto_approve:
+            from agents.hitl_helpers import set_prompter
+
+            set_prompter(None)
 
 
 if __name__ == "__main__":

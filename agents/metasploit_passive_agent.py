@@ -1,7 +1,8 @@
 import os
 from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
-from langgraph.prebuilt import create_react_agent as create_langgraph_agent
+from uuid import uuid4
+
+from langchain.agents import create_agent
 from colorama import init, Fore, Style
 import sys
 import re
@@ -15,6 +16,11 @@ from tools.metasploit_passive_tool import (
 from models.structured_results import MetasploitResult, ExploitInfo
 from llm_factory import create_llm
 from prompts import PromptProvider
+from agents.hitl_helpers import (
+    build_passive_hitl,
+    get_checkpointer,
+    handle_interrupt_loop,
+)
 
 init(autoreset=True)
 
@@ -55,7 +61,28 @@ class MetasploitPassiveAgent:
             f"{Fore.YELLOW}[MetasploitPassiveAgent] PASSIVE MODE - Will NOT execute any exploits{Style.RESET_ALL}"
         )
 
-        self.agent_executor = create_langgraph_agent(self.llm, self.tools)
+        system_prompt = METASPLOIT_PASSIVE_AGENT_PROMPT.format(
+            skill=PromptProvider.get_skill("metasploit_passive"),
+        )
+
+        # Read-only RPC lookups — auto-approve all 3 tools so the operator isn't
+        # prompted on every search. The middleware is wired uniformly anyway, so
+        # adding active modules later is one config change.
+        self.agent_executor = create_agent(
+            model=self.llm,
+            tools=self.tools,
+            system_prompt=system_prompt,
+            middleware=[
+                build_passive_hitl(
+                    [
+                        "list_available_exploits",
+                        "get_exploit_details",
+                        "search_exploits_by_cve",
+                    ]
+                )
+            ],
+            checkpointer=get_checkpointer(),
+        )
 
     def process_request(
         self, user_request: str, vulnerability_data: Dict[str, Any] = None
@@ -114,33 +141,22 @@ class MetasploitPassiveAgent:
                 f"{Fore.CYAN}[MetasploitPassiveAgent] Processing with enriched context...{Style.RESET_ALL}"
             )
 
-            result_messages = []
-            tool_used = False
+            thread_id = uuid4().hex
+            response = handle_interrupt_loop(
+                self.agent_executor.invoke,
+                initial_input={"messages": [("user", enriched_request)]},
+                config={"configurable": {"thread_id": thread_id}},
+                thread_id=thread_id,
+            )
 
-            def _record_message(msg):
-                nonlocal tool_used
-                if msg is None:
-                    return
-                result_messages.append(msg)
+            result_messages = response.get("messages", []) if isinstance(response, dict) else []
+
+            tool_used = False
+            for msg in result_messages:
                 msg_type = getattr(msg, "type", "")
                 if msg_type == "tool":
                     tool_used = True
                 if ToolMessage and isinstance(msg, ToolMessage):
-                    tool_used = True
-
-            for event in self.agent_executor.stream(
-                {"messages": [("user", enriched_request)]}
-            ):
-                for _, value in event.items():
-                    if isinstance(value, dict) and "messages" in value:
-                        for msg in value["messages"]:
-                            _record_message(msg)
-                    elif isinstance(value, (list, tuple)):
-                        for msg in value:
-                            _record_message(msg)
-                    elif hasattr(value, "type") or hasattr(value, "content"):
-                        _record_message(value)
-                if "tool" in event:
                     tool_used = True
 
             final_response = ""

@@ -1,12 +1,86 @@
 import os
+import re
 import sys
 import json
 from typing import Dict, Any, List, Optional
 from langchain_core.tools import tool
+from pydantic import BaseModel, Field, field_validator
 from pymetasploit3.msfrpc import MsfRpcClient
 from colorama import Fore, Style
 
 _msf_client = None
+
+
+_KEYWORDS_RE = re.compile(r"^[\w \-.]{1,200}$")
+_MODULE_PATH_RE = re.compile(r"^(exploit|auxiliary|post|payload|encoder|nop)/[a-z0-9_/]{1,200}$")
+_CVE_RE = re.compile(r"^(CVE-)?\d{4}-\d{4,7}$", re.IGNORECASE)
+
+
+class ListExploitsInput(BaseModel):
+    vulnerability_keywords: str = Field(
+        description=(
+            "Keywords to search the Metasploit module index. "
+            "Allowed chars: alphanumerics, spaces, '-' and '.'. "
+            "Examples: 'wordpress social warfare', 'ms17-010', 'apache struts'."
+        ),
+    )
+    max_results: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum exploits to return (clamped to 1-50).",
+    )
+
+    @field_validator("vulnerability_keywords")
+    @classmethod
+    def _validate_keywords(cls, v: str) -> str:
+        v = v.strip()
+        if not _KEYWORDS_RE.match(v):
+            raise ValueError(
+                "vulnerability_keywords contains disallowed characters; "
+                "allowed set: alphanumerics, spaces, '-', '.'"
+            )
+        return v
+
+
+class ExploitDetailsInput(BaseModel):
+    exploit_path: str = Field(
+        description=(
+            "Full module path. Must match "
+            "'(exploit|auxiliary|post|payload|encoder|nop)/<lowercase/path>'. "
+            "Example: 'exploit/windows/smb/ms17_010_eternalblue'."
+        ),
+    )
+
+    @field_validator("exploit_path")
+    @classmethod
+    def _validate_path(cls, v: str) -> str:
+        v = v.strip()
+        if not _MODULE_PATH_RE.match(v):
+            raise ValueError(
+                "exploit_path must match "
+                "'(exploit|auxiliary|post|payload|encoder|nop)/<a-z0-9_/>'"
+            )
+        return v
+
+
+class CveSearchInput(BaseModel):
+    cve_id: str = Field(
+        description=(
+            "CVE identifier. Accepts 'CVE-YYYY-NNNN' or 'YYYY-NNNN' "
+            "(case-insensitive). Normalised to 'CVE-YYYY-NNNN'."
+        ),
+    )
+
+    @field_validator("cve_id")
+    @classmethod
+    def _validate_cve(cls, v: str) -> str:
+        v = v.strip()
+        if not _CVE_RE.match(v):
+            raise ValueError("cve_id must match 'CVE-YYYY-NNNN' or 'YYYY-NNNN'")
+        if not v.upper().startswith("CVE-"):
+            v = f"CVE-{v}"
+        return v.upper()
 
 
 def get_msf_client() -> MsfRpcClient:
@@ -28,18 +102,31 @@ def get_msf_client() -> MsfRpcClient:
     return _msf_client
 
 
-@tool
+def validate_metasploit_connection() -> bool:
+    """Check if Metasploit RPC service is reachable."""
+    try:
+        get_msf_client()
+        print(f"{Fore.GREEN}✓ Metasploit RPC connection established{Style.RESET_ALL}")
+        return True
+    except Exception as e:
+        print(f"{Fore.YELLOW}ℹ️  Metasploit RPC not available: {str(e)}{Style.RESET_ALL}")
+        return False
+
+
+@tool("list_available_exploits", args_schema=ListExploitsInput, return_direct=False)
 def list_available_exploits(vulnerability_keywords: str, max_results: int = 10) -> str:
+    """List available Metasploit exploits matching vulnerability keywords (PASSIVE — no execution).
+
+    Inputs are validated by the schema: keywords match `^[\\w \\-.]{1,200}$` and
+    max_results is clamped to 1-50. Returns formatted module info; never runs them.
     """
-    List available Metasploit exploits based on vulnerability keywords (PASSIVE - no execution)
-    
-    Args:
-        vulnerability_keywords: Keywords related to vulnerabilities (e.g., "wordpress social warfare", "ms17-010", "apache struts")
-        max_results: Maximum number of exploits to return (default: 10)
-    
-    Returns:
-        Formatted list of available exploits with descriptions and required options
-    """
+    # Re-validate so errors are caught when the tool is called programmatically.
+    params = ListExploitsInput(
+        vulnerability_keywords=vulnerability_keywords,
+        max_results=max_results,
+    )
+    vulnerability_keywords = params.vulnerability_keywords
+    max_results = params.max_results
     try:
         client = get_msf_client()
         
@@ -110,17 +197,15 @@ def list_available_exploits(vulnerability_keywords: str, max_results: int = 10) 
         return f"Error searching exploits: {str(e)}"
 
 
-@tool
+@tool("get_exploit_details", args_schema=ExploitDetailsInput, return_direct=False)
 def get_exploit_details(exploit_path: str) -> str:
+    """Get detailed information about a Metasploit module path (PASSIVE).
+
+    Path is validated by the schema. Returns description, rank, options,
+    targets, and compatible payloads. Does not run the module.
     """
-    Get detailed information about a specific Metasploit exploit (PASSIVE)
-    
-    Args:
-        exploit_path: Full path to the exploit module (e.g., "exploit/windows/smb/ms17_010_eternalblue")
-    
-    Returns:
-        Detailed information about the exploit including options, targets, and usage
-    """
+    params = ExploitDetailsInput(exploit_path=exploit_path)
+    exploit_path = params.exploit_path
     try:
         client = get_msf_client()
         
@@ -181,23 +266,18 @@ def get_exploit_details(exploit_path: str) -> str:
         return f"Error getting exploit details: {str(e)}"
 
 
-@tool  
+@tool("search_exploits_by_cve", args_schema=CveSearchInput, return_direct=False)
 def search_exploits_by_cve(cve_id: str) -> str:
+    """Search for Metasploit modules tagged with a CVE identifier (PASSIVE).
+
+    The schema accepts 'CVE-YYYY-NNNN' or bare 'YYYY-NNNN' and normalises
+    to the canonical 'CVE-YYYY-NNNN' form before searching.
     """
-    Search for Metasploit exploits by CVE identifier (PASSIVE)
-    
-    Args:
-        cve_id: CVE identifier (e.g., "CVE-2017-0144", "2017-0144")
-    
-    Returns:
-        List of exploits that target the specified CVE
-    """
+    params = CveSearchInput(cve_id=cve_id)
+    cve_id = params.cve_id
     try:
         client = get_msf_client()
-        
-        if not cve_id.upper().startswith('CVE-'):
-            cve_id = f"CVE-{cve_id}"
-        
+
         print(f"{Fore.CYAN}[DEBUG] Searching for exploits targeting: {cve_id}{Style.RESET_ALL}\n")
         
         all_exploits = client.modules.exploits

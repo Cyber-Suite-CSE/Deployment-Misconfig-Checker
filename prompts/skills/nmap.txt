@@ -1,0 +1,126 @@
+═══════════════════════════════════════════════════════════════
+NMAP OPERATIONAL SKILL — TYPED PARAMETERS
+═══════════════════════════════════════════════════════════════
+
+The execute_nmap tool takes typed parameters; pick the right combination
+for the task. There is NO command string to write — every flag is a
+typed field, validated by Pydantic before nmap runs.
+
+═══════════════════════════════════════════════════════════════
+SCAN STRATEGY — TWO-PHASE APPROACH
+═══════════════════════════════════════════════════════════════
+
+Never guess what service runs on a port. Probe actively.
+
+PHASE 1 — PORT DISCOVERY (fast triage):
+  target=<host>, scan_profile="quick"
+  Equivalent argv: nmap --top-ports 100 -T3 --open <host>
+  Use this to find which ports are open without deep probing.
+
+PHASE 2 — SERVICE / VERSION PROBING (targeted):
+  target=<host>, scan_profile="standard", ports="<csv from phase 1>",
+  service_detection=true, default_scripts=true
+  Equivalent argv: nmap -p<ports> -sV -sC -T3 --open <host>
+  Only probe ports that were actually open in Phase 1.
+
+═══════════════════════════════════════════════════════════════
+SCAN PROFILES (baselines)
+═══════════════════════════════════════════════════════════════
+
+scan_profile="quick"
+  Top-100 ports, no service detect. Fast triage.
+
+scan_profile="standard"   (DEFAULT)
+  Top-1000 ports + -sV (service detection).
+
+scan_profile="comprehensive"
+  Full TCP range + -sV + -sC + -O. Slow. REQUIRES SUDO.
+
+scan_profile="stealth"
+  -sS SYN scan with -T2 timing. REQUIRES SUDO.
+
+scan_profile="ping"
+  -sn host discovery only. No port scan.
+
+═══════════════════════════════════════════════════════════════
+GRANULAR TOGGLES (layer on top of any profile)
+═══════════════════════════════════════════════════════════════
+
+service_detection=true   add -sV (probe versions)
+os_detection=true        add -O  (OS fingerprint — REQUIRES SUDO)
+default_scripts=true     add -sC (NSE default category)
+open_only=true           add --open (default; cleaner output)
+
+ports="80,443"           override default port list
+ports="1-1000"           explicit range
+ports="top-100"          top-N shortcut
+
+timing="aggressive"      -T4 — preferred for LAN/local
+timing="normal"          -T3 — default
+timing="polite"          -T2 — fragile networks
+
+nse_scripts=["vuln"]     allowlisted NSE script categories. Allowed names:
+                         vuln, default, safe, discovery, auth,
+                         http-title, http-headers, http-enum, http-methods,
+                         http-robots.txt, ssl-cert, ssl-enum-ciphers,
+                         smb-os-discovery, smb-vuln-ms17-010, smb-enum-shares,
+                         ftp-anon, dns-brute.
+
+═══════════════════════════════════════════════════════════════
+SHORTCUTS
+═══════════════════════════════════════════════════════════════
+
+User says "scan port 8080 on X":
+  target="X", scan_profile="standard", ports="8080",
+  service_detection=true, default_scripts=true
+
+User says "check SSH on X":
+  target="X", scan_profile="standard", ports="22",
+  service_detection=true, default_scripts=true
+
+User says "quick scan X":
+  target="X", scan_profile="quick", timing="aggressive"
+
+User says "find live hosts on 10.0.0.0/24":
+  target="10.0.0.0/24", scan_profile="ping"
+
+═══════════════════════════════════════════════════════════════
+ROOT-REQUIRING SCANS
+═══════════════════════════════════════════════════════════════
+
+These scans need sudo (the tool will prompt via HITL):
+- scan_profile="comprehensive"
+- scan_profile="stealth"
+- os_detection=true
+
+═══════════════════════════════════════════════════════════════
+TIMEOUT AWARENESS
+═══════════════════════════════════════════════════════════════
+
+The tool has a 120-second timeout. If a scan times out:
+1. Drop ports to 100 or so via ports="top-100"
+2. Use timing="aggressive"
+3. Drop default_scripts (NSE scripts are slow)
+4. Switch to scan_profile="quick"
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Scan localhost"
+  Phase 1: target="localhost", scan_profile="quick"
+  Phase 2: target="localhost", scan_profile="standard",
+           ports="<found>", service_detection=true, default_scripts=true
+
+"Find web servers on 192.168.1.0/24"
+  target="192.168.1.0/24", ports="80,443,8080,8443", open_only=true,
+  timing="aggressive"
+
+"Full scan of 192.168.1.1"
+  target="192.168.1.1", scan_profile="comprehensive"
+
+"What OS is 192.168.1.1 running?"
+  target="192.168.1.1", os_detection=true, service_detection=true
+
+"Run vuln NSE scripts against open SMB on 10.0.0.5"
+  target="10.0.0.5", ports="445", nse_scripts=["vuln","smb-vuln-ms17-010"]

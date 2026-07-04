@@ -1,0 +1,87 @@
+═══════════════════════════════════════════════════════════════
+MASSCAN OPERATIONAL SKILL — TYPED PARAMETERS
+═══════════════════════════════════════════════════════════════
+
+PURPOSE
+masscan is the fastest way to find open ports across large networks
+(/16, /24, etc.). It does NOT do service detection, version probing,
+or OS fingerprinting — pair it with nmap for follow-up.
+
+The execute_masscan tool takes typed parameters; there is NO command
+string. Every flag is a typed field validated by Pydantic. Every real
+scan is auto-elevated via sudo (masscan needs raw-socket access).
+
+═══════════════════════════════════════════════════════════════
+REQUIRED INPUT
+═══════════════════════════════════════════════════════════════
+
+targets   list of one or more entries. Each entry must be:
+            - a single IP        ("10.0.0.5")
+            - a CIDR block       ("10.0.0.0/24")
+            - a range            ("10.0.0.1-10.0.0.50")
+          Up to 64 entries per call.
+
+ports     port spec string. Required (there is no default port set).
+          Formats:
+            "80"               single port
+            "80,443,8080"      list
+            "1-65535"          range
+            "22,80-100,443"    mixed
+            "U:53,T:80"        with explicit transport
+                               (U=UDP, T=TCP)
+
+═══════════════════════════════════════════════════════════════
+OPTIONAL PARAMETERS
+═══════════════════════════════════════════════════════════════
+
+rate=N            packets/second. Default 1000.
+  100             polite, WAN-safe baseline
+  1000            LAN default (PREFERRED)
+  10000           /16 sweeps
+  100000+         lab links only
+
+banners=true      pull lightweight banners from open ports.
+
+excludes=[ ... ]  IPs/CIDRs/ranges to skip. Same format as targets.
+
+interface="eth0"  bind to a specific NIC (alphanumerics, _.-, ≤16 chars).
+
+wait_seconds=10   how long to wait for late responses after the last
+                  probe is sent (0-120). Default 10.
+
+═══════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+"Sweep 10.0.0.0/24 fast"
+  targets=["10.0.0.0/24"], ports="1-65535", rate=1000
+
+"Find web servers across 192.168.0.0/16"
+  targets=["192.168.0.0/16"], ports="80,443,8080,8443", rate=10000
+
+"Quick check for SSH on this subnet"
+  targets=["192.168.1.0/24"], ports="22", rate=1000
+
+"Scan UDP DNS across the lab range"
+  targets=["10.0.0.0/16"], ports="U:53", rate=5000
+
+"Scan two specific hosts on common ports, skip 10.0.0.5"
+  targets=["10.0.0.10","10.0.0.11"], ports="22,80,443",
+  excludes=["10.0.0.5"], rate=1000
+
+═══════════════════════════════════════════════════════════════
+ROOT REQUIREMENT
+═══════════════════════════════════════════════════════════════
+
+masscan needs raw-socket access. The tool always prepends sudo via
+the cached HITL password. If no password is cached yet, the operator
+must approve a privileged tool call once to enter it.
+
+═══════════════════════════════════════════════════════════════
+WHAT MASSCAN DOES NOT DO
+═══════════════════════════════════════════════════════════════
+
+- No service/version detection — use nmap (scan_profile="standard"
+  with ports="<found>", service_detection=true) afterwards.
+- No OS fingerprinting — use nmap with os_detection=true.
+- No NSE scripts.
