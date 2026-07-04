@@ -279,6 +279,17 @@ def build_wpscan_argv(params: WpscanInput) -> List[str]:
     return argv
 
 
+def _redact_sensitive_argv(argv: List[str]) -> List[str]:
+    redacted = list(argv)
+    sensitive_flags = {"--api-token", "--password-attack"}
+
+    for i, arg in enumerate(redacted[:-1]):
+        if arg in sensitive_flags:
+            redacted[i + 1] = "***REDACTED***"
+
+    return redacted
+
+
 @tool("wpscan_executor", args_schema=WpscanInput, return_direct=False)
 def execute_wpscan(
     url: str,
@@ -309,9 +320,10 @@ def execute_wpscan(
         api_token=api_token,
     )
     argv = build_wpscan_argv(params)
+    redacted_argv = _redact_sensitive_argv(argv)
 
     print(f"\n{Fore.CYAN}[DEBUG] ========================================")
-    print(f"{Fore.YELLOW}[DEBUG] Composed argv: {Fore.WHITE}{argv}")
+    print(f"{Fore.YELLOW}[DEBUG] Composed argv: {Fore.WHITE}{redacted_argv}")
     print(f"{Fore.CYAN}[DEBUG] ========================================{Style.RESET_ALL}")
 
     try:
