@@ -2,6 +2,9 @@ import os
 import uuid
 import asyncio
 from datetime import datetime
+import time
+
+start_time = time.time()
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -9,8 +12,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import sys
+import os
+
+# Add parent directory to path to allow importing agents when run from backend directory
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agents.orchestrator_agent import OrchestratorAgent
-from .database import Database, DatabaseException
+
+try:
+    from .database import Database, DatabaseException
+except ImportError:
+    from database import Database, DatabaseException
 
 app = FastAPI(title="Deployment Misconfig Checker API")
 
@@ -148,6 +161,32 @@ async def get_job_status(job_id: str):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
+# Prometheus Metrics
+@app.get("/metrics")
+async def metrics():
+    uptime = time.time() - start_time
+    # Get memory usage via resource or read from /proc/self/status
+    try:
+        with open('/proc/self/status', 'r') as f:
+            lines = f.readlines()
+        rss = 0
+        for line in lines:
+            if line.startswith('VmRSS:'):
+                rss = int(line.split()[1]) * 1024 # Convert KB to Bytes
+                break
+    except:
+        rss = 0
+        
+    metrics_data = f"""# HELP process_uptime_seconds Uptime of the process in seconds
+# TYPE process_uptime_seconds gauge
+process_uptime_seconds {uptime}
+# HELP process_memory_bytes Memory usage in bytes
+# TYPE process_memory_bytes gauge
+process_memory_bytes{{type="rss"}} {rss}
+"""
+    from fastapi.responses import Response
+    return Response(content=metrics_data, media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @app.get("/api/jobs", response_model=PaginatedJobsResponse)
