@@ -1,6 +1,8 @@
 # Multi-Agent Cybersecurity System
 
 A multi-agent system that executes real cybersecurity commands using LangChain and LangGraph. An orchestrator routes natural-language requests to specialized tool agents.
+<img width="1408" height="853" alt="image" src="https://github.com/user-attachments/assets/d3f04593-2a1e-426e-80ba-09d2a965d68c" />
+
 
 ## Architecture
 
